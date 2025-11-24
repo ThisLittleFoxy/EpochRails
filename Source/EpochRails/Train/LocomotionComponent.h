@@ -1,8 +1,8 @@
 #pragma once
 
-#include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Components/SplineComponent.h"
+#include "CoreMinimal.h"
 #include "LocomotionComponent.generated.h"
 
 // Delegate for location changed
@@ -45,6 +45,14 @@ public:
   UFUNCTION(BlueprintCallable, Category = "Locomotion")
   void SetRailSpline(USplineComponent *NewSpline);
 
+  // НОВОЕ: Установить начальную позицию на сплайне
+  UFUNCTION(BlueprintCallable, Category = "Locomotion")
+  void SetStartDistance(float Distance);
+
+  // НОВОЕ: Переместиться к ближайшей точке на сплайне
+  UFUNCTION(BlueprintCallable, Category = "Locomotion")
+  void SnapToNearestPointOnSpline();
+
 public:
   // Events
   FOnLocationChanged OnLocationChanged;
@@ -85,9 +93,28 @@ private:
             meta = (AllowPrivateAccess = "true"))
   float DragDeceleration = 50.0f; // Natural deceleration
 
+  // НОВОЕ: Автоматически позиционировать на старте
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
+            meta = (AllowPrivateAccess = "true"))
+  bool bAutoPositionOnStart = true;
+
+  // НОВОЕ: Стартовая дистанция на сплайне (0 = начало, 1 = конец при
+  // использовании процентов)
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
+            meta = (AllowPrivateAccess = "true", ClampMin = "0.0"))
+  float StartDistance = 0.0f;
+
+  // НОВОЕ: Использовать проценты вместо абсолютной дистанции для StartDistance
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
+            meta = (AllowPrivateAccess = "true"))
+  bool bUsePercentageForStart = false;
+
   // Update position along spline
   void UpdatePosition(float DeltaTime);
 
   // Update actor rotation to match spline direction
   void UpdateRotation();
+
+  // НОВОЕ: Инициализировать позицию при назначении сплайна
+  void InitializePosition();
 };

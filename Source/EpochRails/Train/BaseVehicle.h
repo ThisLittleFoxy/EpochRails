@@ -9,6 +9,10 @@ class UResourceInventory;
 class USplineComponent;
 class ARailSplineActor;
 
+// Делегат для события смерти
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnVehicleDestroyed, ABaseVehicle *,
+                                            DestroyedVehicle);
+
 UCLASS()
 class EPOCHRAILS_API ABaseVehicle : public APawn {
   GENERATED_BODY()
@@ -35,6 +39,21 @@ protected:
 
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
   float CurrentSpeed = 0.0f;
+
+  // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Явное назначение рельсов
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
+            meta = (DisplayName = "Assigned Rail Spline"))
+  ARailSplineActor *AssignedRailSpline = nullptr;
+
+  // Fallback: автопоиск, если не назначено вручную
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
+            meta = (DisplayName = "Auto-Find Nearest Rail"))
+  bool bAutoFindNearestRail = false;
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
+            meta = (DisplayName = "Rail Search Radius",
+                    EditCondition = "bAutoFindNearestRail"))
+  float RailSearchRadius = 1000.0f;
 
   // ----- Systems -----
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Systems")
@@ -64,6 +83,29 @@ public:
     return LocomotionComponent;
   }
 
+  // Manually assign rail spline
+  UFUNCTION(BlueprintCallable, Category = "Movement")
+  void SetRailSpline(ARailSplineActor *NewRailSpline);
+
+  // Check if vehicle is destroyed
+  UFUNCTION(BlueprintPure, Category = "Health")
+  bool IsDestroyed() const { return CurrentHealth <= 0.0f; }
+
+public:
+  // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Событие смерти
+  UPROPERTY(BlueprintAssignable, Category = "Health")
+  FOnVehicleDestroyed OnVehicleDestroyed;
+
+protected:
+  // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Обработка смерти
+  UFUNCTION(BlueprintNativeEvent, Category = "Health")
+  void HandleDestruction();
+  virtual void HandleDestruction_Implementation();
+
 private:
   void InitializeRailSpline();
+  ARailSplineActor *FindNearestRail();
+
+  // Флаг для предотвращения множественных вызовов смерти
+  bool bIsDestroyed = false;
 };
