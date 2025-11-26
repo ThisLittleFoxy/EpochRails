@@ -14,28 +14,42 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogRailsChar, Log, All);
 
+//==================== CONSTRUCTOR ====================//
+
 ARailsPlayerCharacter::ARailsPlayerCharacter() {
   PrimaryActorTick.bCanEverTick = true;
 
-  bUseControllerRotationYaw = false;
+  // ========== Character Movement Setup ==========
+  bUseControllerRotationYaw = true; // Персонаж поворачивается с камерой
   bUseControllerRotationPitch = false;
   bUseControllerRotationRoll = false;
 
   if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-    MoveComp->bOrientRotationToMovement = true;
+    MoveComp->bOrientRotationToMovement =
+        false; // НЕ поворачиваться по направлению движения
     MoveComp->RotationRate = FRotator(0.f, 540.f, 0.f);
-    MoveComp->MaxWalkSpeed = 600.f;
+    MoveComp->MaxWalkSpeed = WalkSpeed; // Используем переменную
     MoveComp->JumpZVelocity = 400.f;
     MoveComp->AirControl = 0.2f;
   }
 
+  // ========== Full Body Mesh Setup (ВАЖНО!) ==========
+  // Персонаж видим владельцем (full body awareness)
+  GetMesh()->SetOwnerNoSee(false); // владелец ВИДИТ своё тело
+  GetMesh()->bCastHiddenShadow = true;
+
+  // ========== Camera Setup ==========
+  // ВАЖНО: Камера привязана к ГОЛОВЕ через socket!
   FirstPersonCamera =
       CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
-  FirstPersonCamera->SetupAttachment(GetCapsuleComponent());
-  FirstPersonCamera->SetRelativeLocation(FVector(0.f, 0.f, 60.f));
+
+  // Привязываем к mesh с socket "head" (нужно создать в скелете)
+  FirstPersonCamera->SetupAttachment(GetMesh(), TEXT("head"));
+  FirstPersonCamera->SetRelativeLocation(
+      FVector(CameraForwardOffset, 0.f, 0.f));
   FirstPersonCamera->bUsePawnControlRotation = true;
 
-  // Input Mapping Context
+  // ========== Input Mapping Context ==========
   static ConstructorHelpers::FObjectFinder<UInputMappingContext> IMCObj(
       TEXT("/Game/Input/IMC_RailsDefault"));
   if (IMCObj.Succeeded()) {
@@ -45,6 +59,9 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
     UE_LOG(LogRailsChar, Error, TEXT("Failed to load IMC_RailsDefault"));
   }
 
+  // ========== Input Actions ==========
+
+  // Move Action
   static ConstructorHelpers::FObjectFinder<UInputAction> IA_MoveObj(
       TEXT("/Game/Input/Actions/IA_Move"));
   if (IA_MoveObj.Succeeded()) {
@@ -54,6 +71,7 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
     UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_Move"));
   }
 
+  // Look Action
   static ConstructorHelpers::FObjectFinder<UInputAction> IA_LookObj(
       TEXT("/Game/Input/Actions/IA_Look"));
   if (IA_LookObj.Succeeded()) {
@@ -63,6 +81,7 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
     UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_Look"));
   }
 
+  // Interact Action
   static ConstructorHelpers::FObjectFinder<UInputAction> IA_InteractObj(
       TEXT("/Game/Input/Actions/IA_Interact"));
   if (IA_InteractObj.Succeeded()) {
@@ -72,15 +91,18 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
     UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_Interact"));
   }
 
+  // Toggle Build Mode Action
   static ConstructorHelpers::FObjectFinder<UInputAction> IA_BuildObj(
       TEXT("/Game/Input/Actions/IA_ToggleBuildMode"));
   if (IA_BuildObj.Succeeded()) {
     ToggleBuildModeAction = IA_BuildObj.Object;
-    UE_LOG(LogRailsChar, Log, TEXT("Successfully loaded IA_ToggleBuildMode"));
+    UE_LOG(LogRailsChar, Log,
+           TEXT("Successfully loaded IA_ToggleBuildMode"));
   } else {
     UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_ToggleBuildMode"));
   }
 
+  // Exit Mode Action
   static ConstructorHelpers::FObjectFinder<UInputAction> IA_ExitObj(
       TEXT("/Game/Input/Actions/IA_ExitMode"));
   if (IA_ExitObj.Succeeded()) {
@@ -89,7 +111,24 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
   } else {
     UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_ExitMode"));
   }
+
+  // Sprint Action (НОВОЕ)
+  static ConstructorHelpers::FObjectFinder<UInputAction> IA_SprintObj(
+      TEXT("/Game/Input/Actions/IA_Sprint"));
+  if (IA_SprintObj.Succeeded()) {
+    SprintAction = IA_SprintObj.Object;
+    UE_LOG(LogRailsChar, Log, TEXT("Successfully loaded IA_Sprint"));
+  } else {
+    UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_Sprint"));
+  }
+
+  // ========== Initial State ==========
+  HandState = EHandState::Empty;
+  CurrentHeldItem = nullptr;
+  bIsSprinting = false;
 }
+
+//==================== BEGIN PLAY ====================//
 
 void ARailsPlayerCharacter::BeginPlay() {
   Super::BeginPlay();
@@ -108,7 +147,17 @@ void ARailsPlayerCharacter::BeginPlay() {
   }
 
   SetPlayerMode(EPlayerMode::Walking);
+
+  // Скрыть голову от владельца (опционально)
+  HideHeadForOwner();
+
+  // Установить начальные скорости
+  if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
+    MoveComp->MaxWalkSpeed = WalkSpeed;
+  }
 }
+
+//==================== SETUP INPUT ====================//
 
 void ARailsPlayerCharacter::SetupPlayerInputComponent(
     UInputComponent *PlayerInputComponent) {
@@ -116,13 +165,16 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
 
   if (UEnhancedInputComponent *EIC =
           Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
+
+    // Move
     if (MoveAction) {
       EIC->BindAction(MoveAction, ETriggerEvent::Triggered, this,
                       &ARailsPlayerCharacter::Move);
     } else {
-      UE_LOG(LogRailsChar, Error, TEXT("❌ MoveAction is null"));
+      UE_LOG(LogRailsChar, Error, TEXT("MoveAction is null"));
     }
 
+    // Look
     if (LookAction) {
       EIC->BindAction(LookAction, ETriggerEvent::Triggered, this,
                       &ARailsPlayerCharacter::Look);
@@ -130,6 +182,7 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
       UE_LOG(LogRailsChar, Error, TEXT("LookAction is null"));
     }
 
+    // Interact
     if (InteractAction) {
       EIC->BindAction(InteractAction, ETriggerEvent::Started, this,
                       &ARailsPlayerCharacter::Interact);
@@ -137,6 +190,7 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
       UE_LOG(LogRailsChar, Error, TEXT("InteractAction is null"));
     }
 
+    // Toggle Build Mode
     if (ToggleBuildModeAction) {
       EIC->BindAction(ToggleBuildModeAction, ETriggerEvent::Started, this,
                       &ARailsPlayerCharacter::ToggleBuildMode);
@@ -144,17 +198,31 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
       UE_LOG(LogRailsChar, Error, TEXT("ToggleBuildModeAction is null"));
     }
 
+    // Exit Mode
     if (ExitModeAction) {
       EIC->BindAction(ExitModeAction, ETriggerEvent::Started, this,
                       &ARailsPlayerCharacter::ExitCurrentMode);
     } else {
       UE_LOG(LogRailsChar, Error, TEXT("ExitModeAction is null"));
     }
+
+    // Sprint (НОВОЕ)
+    if (SprintAction) {
+      EIC->BindAction(SprintAction, ETriggerEvent::Started, this,
+                      &ARailsPlayerCharacter::StartSprint);
+      EIC->BindAction(SprintAction, ETriggerEvent::Completed, this,
+                      &ARailsPlayerCharacter::StopSprint);
+    } else {
+      UE_LOG(LogRailsChar, Error, TEXT("SprintAction is null"));
+    }
+
   } else {
     UE_LOG(LogRailsChar, Error,
-           TEXT("❌ Failed to cast to EnhancedInputComponent"));
+           TEXT("Failed to cast to EnhancedInputComponent"));
   }
 }
+
+//==================== TICK ====================//
 
 void ARailsPlayerCharacter::Tick(float DeltaTime) {
   Super::Tick(DeltaTime);
@@ -166,7 +234,12 @@ void ARailsPlayerCharacter::Tick(float DeltaTime) {
   if (CurrentMode == EPlayerMode::Building) {
     UpdateBuildPreview();
   }
+
+  // Обновление поворота головы за камерой
+  UpdateHeadRotation(DeltaTime);
 }
+
+//==================== MOVEMENT INPUT ====================//
 
 void ARailsPlayerCharacter::Move(const FInputActionValue &Value) {
   if (CurrentMode != EPlayerMode::Walking) {
@@ -174,7 +247,6 @@ void ARailsPlayerCharacter::Move(const FInputActionValue &Value) {
   }
 
   const FVector2D Input2D = Value.Get<FVector2D>();
-
   if (!Controller || Input2D.IsNearlyZero()) {
     return;
   }
@@ -189,10 +261,33 @@ void ARailsPlayerCharacter::Move(const FInputActionValue &Value) {
 
 void ARailsPlayerCharacter::Look(const FInputActionValue &Value) {
   const FVector2D Input = Value.Get<FVector2D>();
-
   AddControllerYawInput(Input.X);
   AddControllerPitchInput(Input.Y);
 }
+
+//==================== SPRINT ====================//
+
+void ARailsPlayerCharacter::StartSprint() {
+  if (CurrentMode != EPlayerMode::Walking) {
+    return;
+  }
+
+  bIsSprinting = true;
+  if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
+    MoveComp->MaxWalkSpeed = SprintSpeed;
+  }
+  UE_LOG(LogRailsChar, Log, TEXT("Sprint started"));
+}
+
+void ARailsPlayerCharacter::StopSprint() {
+  bIsSprinting = false;
+  if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
+    MoveComp->MaxWalkSpeed = WalkSpeed;
+  }
+  UE_LOG(LogRailsChar, Log, TEXT("Sprint stopped"));
+}
+
+//==================== INTERACTION ====================//
 
 void ARailsPlayerCharacter::Interact() {
   if (!TargetedInteractable.GetInterface()) {
@@ -208,7 +303,7 @@ void ARailsPlayerCharacter::Interact() {
 
   IInteractableInterface::Execute_OnInteract(TargetedInteractable.GetObject(),
                                              GetController());
-  UE_LOG(LogRailsChar, Log, TEXT("Interacted with: %s"),
+  UE_LOG(LogRailsChar, Log, TEXT("✅ Interacted with: %s"),
          *TargetedInteractable.GetObject()->GetName());
 }
 
@@ -219,8 +314,8 @@ void ARailsPlayerCharacter::TraceForInteractable() {
 
   TArray<AActor *> IgnoredActors;
   IgnoredActors.Add(this);
-
   FHitResult HitResult;
+
   const bool bHit = FAimTraceService::TraceFromScreenCenter(
       GetWorld(), Cast<APlayerController>(Controller), InteractionDistance,
       InteractionChannel, IgnoredActors, HitResult, false);
@@ -250,18 +345,17 @@ void ARailsPlayerCharacter::TraceForInteractable() {
   }
 
 #if !UE_BUILD_SHIPPING
-  // ========== ИЗМЕНЕНО: Убрали линию, оставили только сферу ==========
   if (bHit) {
-    // Зелёный цвет если интерактивный объект, серый если обычный
     FColor SphereColor = TargetedInteractable.GetInterface()
                              ? FColor::Green
                              : FColor(100, 100, 100, 128);
-
     DrawDebugSphere(GetWorld(), HitResult.Location, 10.0f, 8, SphereColor,
                     false, 0.1f);
   }
 #endif
 }
+
+//==================== MODE MANAGEMENT ====================//
 
 void ARailsPlayerCharacter::SetPlayerMode(EPlayerMode NewMode) {
   if (CurrentMode == NewMode) {
@@ -278,6 +372,7 @@ void ARailsPlayerCharacter::SetPlayerMode(EPlayerMode NewMode) {
   case EPlayerMode::Walking:
     if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
       MoveComp->SetMovementMode(MOVE_Walking);
+      MoveComp->MaxWalkSpeed = WalkSpeed;
     }
     break;
 
@@ -356,6 +451,8 @@ void ARailsPlayerCharacter::ExitCurrentMode() {
   }
 }
 
+//==================== BUILDING SYSTEM ====================//
+
 void ARailsPlayerCharacter::UpdateBuildPreview() {
   // TODO: Implementation
 }
@@ -369,4 +466,79 @@ void ARailsPlayerCharacter::CancelBuildPreview() {
     PreviewObject->Destroy();
     PreviewObject = nullptr;
   }
+}
+
+//==================== ITEM MANAGEMENT ====================//
+
+void ARailsPlayerCharacter::EquipItem(AActor *Item) {
+  if (!Item) {
+    UE_LOG(LogRailsChar, Warning, TEXT("Cannot equip null item"));
+    return;
+  }
+
+  // Unequip previous
+  if (CurrentHeldItem) {
+    UnequipItem();
+  }
+
+  CurrentHeldItem = Item;
+
+  // Attach to hand socket
+  // ВАЖНО: скелет должен иметь socket "hand_r" на правой руке
+  Item->AttachToComponent(GetMesh(),
+                          FAttachmentTransformRules::SnapToTargetIncludingScale,
+                          TEXT("hand_r"));
+
+  // Update hand state - можно расширить логику определения типа
+  HandState = EHandState::HoldingTool;
+
+  UE_LOG(LogRailsChar, Log, TEXT("Equipped item: %s"), *Item->GetName());
+}
+
+void ARailsPlayerCharacter::UnequipItem() {
+  if (!CurrentHeldItem) {
+    return;
+  }
+
+  CurrentHeldItem->DetachFromActor(
+      FDetachmentTransformRules::KeepWorldTransform);
+  CurrentHeldItem = nullptr;
+  HandState = EHandState::Empty;
+
+  UE_LOG(LogRailsChar, Log, TEXT("Unequipped item"));
+}
+
+//==================== HEAD ROTATION ====================//
+
+void ARailsPlayerCharacter::UpdateHeadRotation(float DeltaTime) {
+  // Эта функция нужна для передачи данных в AnimBP
+  // Логика вращения головы будет в Animation Blueprint через Control Rig
+
+  // Здесь можно добавить дополнительную логику, если нужно
+  // Например, ограничение поворота головы
+}
+
+void ARailsPlayerCharacter::HideHeadForOwner() {
+  if (!GetMesh()) {
+    return;
+  }
+
+  // ВАРИАНТ 1: Через Material Section (простой способ)
+  // Нужно знать index секции головы (обычно 0 или 1)
+  // Найдите его в Static Mesh Editor
+  // GetMesh()->HideBoneByName(TEXT("head"), EPhysBodyOp::PBO_None);
+
+  // ВАРИАНТ 2: Через Material Parameter (требует настройки материала)
+  // Создайте в материале персонажа Scalar Parameter "HideHead"
+  // И логику: if (HideHead > 0.5) Opacity = 0
+
+  UMaterialInstanceDynamic *HeadMat =
+      GetMesh()->CreateDynamicMaterialInstance(0);
+  if (HeadMat) {
+    // Раскомментируйте если настроили материал:
+    // HeadMat->SetScalarParameterValue(TEXT("HideHead"), 1.0f);
+  }
+
+  UE_LOG(LogRailsChar, Log,
+         TEXT("Head hidden for owner (if material configured)"));
 }

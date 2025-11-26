@@ -18,6 +18,14 @@ enum class EPlayerMode : uint8 {
   Building UMETA(DisplayName = "Building")
 };
 
+/** Состояние рук для анимаций */
+UENUM(BlueprintType)
+enum class EHandState : uint8 {
+  Empty UMETA(DisplayName = "Empty Hands"),
+  HoldingTool UMETA(DisplayName = "Holding Tool"),
+  HoldingWeapon UMETA(DisplayName = "Holding Weapon")
+};
+
 UCLASS()
 class EPOCHRAILS_API ARailsPlayerCharacter : public ACharacter {
   GENERATED_BODY()
@@ -38,6 +46,10 @@ private:
             meta = (AllowPrivateAccess = "true"))
   UCameraComponent *FirstPersonCamera;
 
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera",
+            meta = (AllowPrivateAccess = "true"))
+  float CameraForwardOffset = 10.0f;
+
   // ========== Input Actions ==========
 
   UPROPERTY(EditDefaultsOnly, Category = "Input")
@@ -56,7 +68,10 @@ private:
   UInputAction *ToggleBuildModeAction;
 
   UPROPERTY(EditDefaultsOnly, Category = "Input")
-  UInputAction *ExitModeAction; // Выход из режима управления/строительства
+  UInputAction *ExitModeAction;
+
+  UPROPERTY(EditDefaultsOnly, Category = "Input")
+  UInputAction *SprintAction;
 
   // ========== Interaction ==========
 
@@ -82,6 +97,22 @@ private:
             meta = (AllowPrivateAccess = "true"))
   ABaseVehicle *CurrentTrain = nullptr;
 
+  // ========== Animation / Hand State ==========
+
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation",
+            meta = (AllowPrivateAccess = "true"))
+  EHandState HandState = EHandState::Empty;
+
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation",
+            meta = (AllowPrivateAccess = "true"))
+  bool bIsSprinting = false;
+
+  // ========== Items ==========
+
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Items",
+            meta = (AllowPrivateAccess = "true"))
+  AActor *CurrentHeldItem = nullptr;
+
   // ========== Building System ==========
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building",
@@ -96,11 +127,23 @@ private:
             meta = (AllowPrivateAccess = "true"))
   AActor *PreviewObject = nullptr;
 
+  // ========== Movement Settings ==========
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
+            meta = (AllowPrivateAccess = "true"))
+  float WalkSpeed = 400.0f;
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
+            meta = (AllowPrivateAccess = "true"))
+  float SprintSpeed = 600.0f;
+
 public:
   // ========== Movement Input ==========
 
   void Move(const FInputActionValue &Value);
   void Look(const FInputActionValue &Value);
+  void StartSprint();
+  void StopSprint();
 
   // ========== Interaction ==========
 
@@ -141,6 +184,22 @@ public:
   UFUNCTION(BlueprintCallable, Category = "Building")
   void CancelBuildPreview();
 
+  // ========== Items ==========
+
+  UFUNCTION(BlueprintCallable, Category = "Items")
+  void EquipItem(AActor *Item);
+
+  UFUNCTION(BlueprintCallable, Category = "Items")
+  void UnequipItem();
+
+  // ========== Animation ==========
+
+  /** Обновление поворота головы за камерой */
+  void UpdateHeadRotation(float DeltaTime);
+
+  /** Скрыть голову от владельца (опционально) */
+  void HideHeadForOwner();
+
   // ========== Getters ==========
 
   UFUNCTION(BlueprintPure, Category = "Train")
@@ -148,4 +207,13 @@ public:
 
   UFUNCTION(BlueprintPure, Category = "Camera")
   UCameraComponent *GetFirstPersonCamera() const { return FirstPersonCamera; }
+
+  UFUNCTION(BlueprintPure, Category = "Animation")
+  EHandState GetHandState() const { return HandState; }
+
+  UFUNCTION(BlueprintPure, Category = "Animation")
+  bool IsSprinting() const { return bIsSprinting; }
+
+  UFUNCTION(BlueprintPure, Category = "Animation")
+  FRotator GetControlRotationForAnimBP() const { return GetControlRotation(); }
 };
