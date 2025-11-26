@@ -9,7 +9,7 @@
 *.sdf
 *.VC.db
 *.VC.opendb
-
+*.sln
 # Unreal Engine Build Files
 Binaries/
 Build/
