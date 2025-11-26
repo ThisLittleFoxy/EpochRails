@@ -22,10 +22,6 @@
 			]
 		},
 		{
-			"Name": "AnimatorKit",
-			"Enabled": true
-		},
-		{
 			"Name": "MetaHuman",
 			"Enabled": true,
 			"SupportedTargetPlatforms": [
@@ -70,6 +66,10 @@
 		},
 		{
 			"Name": "MetaHumanRuntime",
+			"Enabled": true
+		},
+		{
+			"Name": "AnimatorKit",
 			"Enabled": true
 		}
 	]
