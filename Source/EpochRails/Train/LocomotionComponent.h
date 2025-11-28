@@ -1,13 +1,13 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
 #pragma once
 
 #include "Components/ActorComponent.h"
-#include "Components/SplineComponent.h"
 #include "CoreMinimal.h"
 #include "LocomotionComponent.generated.h"
 
-// Delegate for location changed
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnLocationChanged, FVector);
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnSpeedChanged, float, float);
+class ARailSplineActor;
+class USplineComponent;
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class EPOCHRAILS_API ULocomotionComponent : public UActorComponent {
@@ -16,105 +16,114 @@ class EPOCHRAILS_API ULocomotionComponent : public UActorComponent {
 public:
   ULocomotionComponent();
 
+protected:
   virtual void BeginPlay() override;
+
+public:
   virtual void
   TickComponent(float DeltaTime, ELevelTick TickType,
                 FActorComponentTickFunction *ThisTickFunction) override;
 
-  // Set throttle input (-1 to 1)
+  // Rail spline management
   UFUNCTION(BlueprintCallable, Category = "Locomotion")
-  void SetThrottle(float Value);
+  void SetRailSpline(ARailSplineActor *NewRailSpline);
 
-  // Apply brakes
-  UFUNCTION(BlueprintCallable, Category = "Locomotion")
-  void ApplyBrakes(float BrakeForce);
-
-  // Get current speed
   UFUNCTION(BlueprintPure, Category = "Locomotion")
-  float GetCurrentSpeed() const { return CurrentVelocity; }
+  ARailSplineActor *GetRailSpline() const { return CurrentRailSpline.Get(); }
 
-  // Get forward direction
+  // Movement control
+  UFUNCTION(BlueprintCallable, Category = "Locomotion")
+  void SetThrottle(float ThrottleValue);
+
+  UFUNCTION(BlueprintCallable, Category = "Locomotion")
+  void ApplyBrake(float BrakeValue);
+
+  UFUNCTION(BlueprintCallable, Category = "Locomotion")
+  void ResetMovement();
+
+  // State queries
   UFUNCTION(BlueprintPure, Category = "Locomotion")
-  FVector GetForwardDirection() const;
+  float GetCurrentSpeed() const { return CurrentSpeed; }
 
-  // Get current position on spline
   UFUNCTION(BlueprintPure, Category = "Locomotion")
-  float GetDistanceAlongSpline() const { return CurrentDistance; }
+  float GetCurrentSpeedKmH() const {
+    return CurrentSpeed * 0.036f;
+  } // cm/s to km/h
 
-  // Set spline component for rail
-  UFUNCTION(BlueprintCallable, Category = "Locomotion")
-  void SetRailSpline(USplineComponent *NewSpline);
+  UFUNCTION(BlueprintPure, Category = "Locomotion")
+  float GetDistanceAlongSpline() const { return DistanceAlongSpline; }
 
-  // НОВОЕ: Установить начальную позицию на сплайне
-  UFUNCTION(BlueprintCallable, Category = "Locomotion")
-  void SetStartDistance(float Distance);
+  UFUNCTION(BlueprintPure, Category = "Locomotion")
+  bool IsMoving() const { return FMath::Abs(CurrentSpeed) > 1.0f; }
 
-  // НОВОЕ: Переместиться к ближайшей точке на сплайне
-  UFUNCTION(BlueprintCallable, Category = "Locomotion")
-  void SnapToNearestPointOnSpline();
+protected:
+  // Rail spline reference (weak pointer to prevent dangling references)
+  UPROPERTY(BlueprintReadOnly, Category = "Locomotion")
+  TWeakObjectPtr<ARailSplineActor> CurrentRailSpline;
 
-public:
-  // Events
-  FOnLocationChanged OnLocationChanged;
-  FOnSpeedChanged OnSpeedChanged;
-
-private:
-  // Reference to rail spline component
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Locomotion",
-            meta = (AllowPrivateAccess = "true"))
-  USplineComponent *RailSpline = nullptr;
-
-  // Current position along spline (in units)
-  UPROPERTY(VisibleAnywhere, Category = "Locomotion")
-  float CurrentDistance = 0.0f;
-
-  // Current velocity (speed)
-  UPROPERTY(VisibleAnywhere, Category = "Locomotion")
-  float CurrentVelocity = 0.0f;
-
-  // Throttle input (-1 to 1)
-  UPROPERTY(VisibleAnywhere, Category = "Locomotion")
-  float ThrottleInput = 0.0f;
+  // Cached spline component for performance
+  UPROPERTY()
+  TWeakObjectPtr<USplineComponent> CachedSplineComponent;
 
   // Movement parameters
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
-            meta = (AllowPrivateAccess = "true"))
-  float MaxSpeed = 1000.0f;
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Locomotion|Physics")
+  float MaxSpeed;
 
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
-            meta = (AllowPrivateAccess = "true"))
-  float Acceleration = 200.0f;
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Locomotion|Physics")
+  float Acceleration;
 
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
-            meta = (AllowPrivateAccess = "true"))
-  float BrakingDeceleration = 300.0f;
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Locomotion|Physics")
+  float Deceleration;
 
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
-            meta = (AllowPrivateAccess = "true"))
-  float DragDeceleration = 50.0f; // Natural deceleration
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Locomotion|Physics")
+  float BrakingForce;
 
-  // НОВОЕ: Автоматически позиционировать на старте
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
-            meta = (AllowPrivateAccess = "true"))
-  bool bAutoPositionOnStart = true;
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Locomotion|Physics")
+  float Mass;
 
-  // НОВОЕ: Стартовая дистанция на сплайне (0 = начало, 1 = конец при
-  // использовании процентов)
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
-            meta = (AllowPrivateAccess = "true", ClampMin = "0.0"))
-  float StartDistance = 0.0f;
+  // Inertia system
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Locomotion|Physics")
+  float InertiaDamping;
 
-  // НОВОЕ: Использовать проценты вместо абсолютной дистанции для StartDistance
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
-            meta = (AllowPrivateAccess = "true"))
-  bool bUsePercentageForStart = false;
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Locomotion|Physics")
+  float FrictionCoefficient;
 
-  // Update position along spline
-  void UpdatePosition(float DeltaTime);
+  // Current state
+  UPROPERTY(BlueprintReadOnly, Category = "Locomotion|State")
+  float CurrentSpeed;
 
-  // Update actor rotation to match spline direction
-  void UpdateRotation();
+  UPROPERTY(BlueprintReadOnly, Category = "Locomotion|State")
+  float TargetSpeed;
 
-  // НОВОЕ: Инициализировать позицию при назначении сплайна
-  void InitializePosition();
+  UPROPERTY(BlueprintReadOnly, Category = "Locomotion|State")
+  float DistanceAlongSpline;
+
+  UPROPERTY(BlueprintReadOnly, Category = "Locomotion|State")
+  float CurrentThrottle;
+
+  UPROPERTY(BlueprintReadOnly, Category = "Locomotion|State")
+  float CurrentBrake;
+
+  // Debug visualization
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Locomotion|Debug")
+  bool bShowDebugInfo;
+
+private:
+  // Internal update methods
+  void UpdateMovement(float DeltaTime);
+  void UpdatePhysics(float DeltaTime);
+  void UpdatePositionOnSpline(float DeltaTime);
+  void ApplyInertia(float DeltaTime);
+  void ApplyFriction(float DeltaTime);
+
+  // Utility methods
+  bool ValidateSpline() const;
+  void DrawDebugInfo() const;
+
+  // Cache for performance optimization
+  float CachedSplineLength;
+  bool bSplineCacheValid;
+
+  void InvalidateSplineCache();
+  void UpdateSplineCache();
 };

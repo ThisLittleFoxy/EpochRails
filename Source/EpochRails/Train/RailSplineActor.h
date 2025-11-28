@@ -1,7 +1,9 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
 #pragma once
 
-#include "CoreMinimal.h"
 #include "Components/SplineComponent.h"
+#include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "RailSplineActor.generated.h"
 
@@ -18,7 +20,11 @@ protected:
 public:
   // Spline that defines the rail path
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Rail")
-  USplineComponent *RailSpline;
+  TObjectPtr<USplineComponent> RailSpline;
+
+  // Get spline component (for LocomotionComponent)
+  UFUNCTION(BlueprintPure, Category = "Rail")
+  USplineComponent *GetSplineComponent() const { return RailSpline; }
 
   // Get the total length of the rail
   UFUNCTION(BlueprintPure, Category = "Rail")

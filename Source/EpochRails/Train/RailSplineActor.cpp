@@ -1,27 +1,24 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
 #include "Train/RailSplineActor.h"
 #include "Components/SplineComponent.h"
 
 ARailSplineActor::ARailSplineActor() {
   PrimaryActorTick.bCanEverTick = false;
 
-  // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Создаем компонент сплайна
-  RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+  // Create root component
+  USceneComponent *Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+  SetRootComponent(Root);
 
+  // Create spline component
   RailSpline = CreateDefaultSubobject<USplineComponent>(TEXT("RailSpline"));
-  RailSpline->SetupAttachment(RootComponent);
-
-  // Настройки сплайна по умолчанию
+  RailSpline->SetupAttachment(Root);
   RailSpline->SetClosedLoop(false);
-  RailSpline->Duration = 1.0f;
 
-#if WITH_EDITORONLY_DATA
-  // Видимость в редакторе
-  RailSpline->bDrawDebug = true;
-  RailSpline->SetUnselectedSplineSegmentColor(FLinearColor::Green);
-  RailSpline->SetSelectedSplineSegmentColor(FLinearColor::Yellow);
-#endif
-
-  UE_LOG(LogTemp, Log, TEXT("ARailSplineActor: Spline component created"));
+  // Set default spline properties
+  RailSpline->SetUnselectedSplineSegmentColor(FLinearColor(0.2f, 0.5f, 1.0f));
+  RailSpline->SetSelectedSplineSegmentColor(FLinearColor(1.0f, 0.5f, 0.2f));
+  RailSpline->SetDrawDebug(true);
 }
 
 void ARailSplineActor::BeginPlay() {
@@ -29,18 +26,22 @@ void ARailSplineActor::BeginPlay() {
 
   if (!RailSpline) {
     UE_LOG(LogTemp, Error,
-           TEXT("ARailSplineActor: RailSpline is null after initialization!"));
+           TEXT("RailSplineActor: RailSpline component is null!"));
     return;
   }
 
-  const float Length = RailSpline->GetSplineLength();
-  UE_LOG(LogTemp, Log,
-         TEXT("ARailSplineActor '%s' initialized with length: %f"), *GetName(),
-         Length);
+  UE_LOG(LogTemp, Log, TEXT("RailSplineActor: Initialized with length %.2f"),
+         GetRailLength());
 }
 
 float ARailSplineActor::GetRailLength() const {
-  return RailSpline ? RailSpline->GetSplineLength() : 0.0f;
+  if (!RailSpline) {
+    UE_LOG(LogTemp, Warning,
+           TEXT("RailSplineActor: RailSpline is null in GetRailLength!"));
+    return 0.0f;
+  }
+
+  return RailSpline->GetSplineLength();
 }
 
 bool ARailSplineActor::IsPointNearRail(FVector Point, float Threshold) const {
@@ -48,9 +49,12 @@ bool ARailSplineActor::IsPointNearRail(FVector Point, float Threshold) const {
     return false;
   }
 
+  // Find closest point on spline
   const float InputKey = RailSpline->FindInputKeyClosestToWorldLocation(Point);
   const FVector ClosestPoint = RailSpline->GetLocationAtSplineInputKey(
       InputKey, ESplineCoordinateSpace::World);
+
+  // Calculate distance
   const float Distance = FVector::Dist(Point, ClosestPoint);
 
   return Distance <= Threshold;
