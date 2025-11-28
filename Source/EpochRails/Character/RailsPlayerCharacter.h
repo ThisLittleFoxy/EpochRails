@@ -1,3 +1,5 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -6,24 +8,26 @@
 #include "RailsPlayerCharacter.generated.h"
 
 class UCameraComponent;
-class UInputAction;
 class UInputMappingContext;
+class UInputAction;
 class ABaseVehicle;
 class IInteractableInterface;
 
+// Hand state enum
+UENUM(BlueprintType)
+enum class EHandState : uint8 {
+  Empty UMETA(DisplayName = "Empty"),
+  HoldingTool UMETA(DisplayName = "Holding Tool"),
+  HoldingWeapon UMETA(DisplayName = "Holding Weapon"),
+  HoldingItem UMETA(DisplayName = "Holding Item")
+};
+
+// Player mode enum
 UENUM(BlueprintType)
 enum class EPlayerMode : uint8 {
   Walking UMETA(DisplayName = "Walking"),
-  Driving UMETA(DisplayName = "Driving Train"),
+  Driving UMETA(DisplayName = "Driving"),
   Building UMETA(DisplayName = "Building")
-};
-
-/** Состояние рук для анимаций */
-UENUM(BlueprintType)
-enum class EHandState : uint8 {
-  Empty UMETA(DisplayName = "Empty Hands"),
-  HoldingTool UMETA(DisplayName = "Holding Tool"),
-  HoldingWeapon UMETA(DisplayName = "Holding Weapon")
 };
 
 UCLASS()
@@ -35,11 +39,18 @@ public:
 
 protected:
   virtual void BeginPlay() override;
-  virtual void
-  SetupPlayerInputComponent(UInputComponent *PlayerInputComponent) override;
+  virtual void SetupPlayerInputComponent(
+      class UInputComponent *PlayerInputComponent) override;
+
+public:
   virtual void Tick(float DeltaTime) override;
 
-  // ========== Input Actions (moved from private to protected) ==========
+  //==================== COMPONENTS ====================//
+
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+  UCameraComponent *FirstPersonCamera;
+
+  //==================== INPUT ====================//
 
   UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
   UInputMappingContext *DefaultMappingContext;
@@ -65,161 +76,100 @@ protected:
   UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
   UInputAction *JumpAction;
 
-private:
-  // ========== Camera ==========
+  //==================== MOVEMENT ====================//
 
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera",
-            meta = (AllowPrivateAccess = "true"))
-  UCameraComponent *FirstPersonCamera;
+  UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Movement")
+  float WalkSpeed = 300.0f;
 
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera",
-            meta = (AllowPrivateAccess = "true"))
-  float CameraForwardOffset = 10.0f;
+  UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Movement")
+  float SprintSpeed = 1000.0f;
 
-  // ========== Interaction ==========
+  UPROPERTY(BlueprintReadOnly, Category = "Movement")
+  bool bIsSprinting;
 
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction",
-            meta = (AllowPrivateAccess = "true"))
+  //==================== INTERACTION ====================//
+
+  UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Interaction")
   float InteractionDistance = 500.0f;
 
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction",
-            meta = (AllowPrivateAccess = "true"))
+  UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Interaction")
   TEnumAsByte<ECollisionChannel> InteractionChannel = ECC_Visibility;
 
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction",
-            meta = (AllowPrivateAccess = "true"))
+  UPROPERTY(BlueprintReadOnly, Category = "Interaction")
   TScriptInterface<IInteractableInterface> TargetedInteractable;
 
-  // ========== Player Mode ==========
+  //==================== CAMERA ====================//
 
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mode",
-            meta = (AllowPrivateAccess = "true"))
-  EPlayerMode CurrentMode = EPlayerMode::Walking;
+  UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera")
+  float CameraForwardOffset = 15.0f;
 
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mode",
-            meta = (AllowPrivateAccess = "true"))
-  ABaseVehicle *CurrentTrain = nullptr;
+  //==================== HAND STATE ====================//
 
-  // ========== Animation / Hand State ==========
+  UPROPERTY(BlueprintReadOnly, Category = "Character")
+  EHandState HandState;
 
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation",
-            meta = (AllowPrivateAccess = "true"))
-  EHandState HandState = EHandState::Empty;
+  UPROPERTY(BlueprintReadOnly, Category = "Character")
+  AActor *CurrentHeldItem;
 
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation",
-            meta = (AllowPrivateAccess = "true"))
-  bool bIsSprinting = false;
+  //==================== PLAYER MODE ====================//
 
-  // ========== Items ==========
+  UPROPERTY(BlueprintReadOnly, Category = "Character")
+  EPlayerMode CurrentMode;
 
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Items",
-            meta = (AllowPrivateAccess = "true"))
-  AActor *CurrentHeldItem = nullptr;
+  UPROPERTY(BlueprintReadOnly, Category = "Character")
+  ABaseVehicle *CurrentTrain;
 
-  // ========== Building System ==========
+  //==================== BUILDING ====================//
 
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building",
-            meta = (AllowPrivateAccess = "true"))
-  float BuildDistance = 1000.0f;
+  UPROPERTY(BlueprintReadOnly, Category = "Building")
+  AActor *PreviewObject;
 
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building",
-            meta = (AllowPrivateAccess = "true"))
-  TSubclassOf<AActor> PreviewObjectClass;
+  //==================== INPUT FUNCTIONS ====================//
 
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Building",
-            meta = (AllowPrivateAccess = "true"))
-  AActor *PreviewObject = nullptr;
-
-  // ========== Movement Settings ==========
-
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
-            meta = (AllowPrivateAccess = "true"))
-  float WalkSpeed = 400.0f;
-
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement",
-            meta = (AllowPrivateAccess = "true"))
-  float SprintSpeed = 600.0f;
-
-public:
-  // ========== Movement Input ==========
-
+protected:
   void Move(const FInputActionValue &Value);
   void Look(const FInputActionValue &Value);
+  void Interact();
   void StartSprint();
   void StopSprint();
+  void StartJump();
+  void StopJump();
 
-  // ========== Interaction ==========
+  //==================== INTERACTION FUNCTIONS ====================//
 
-  UFUNCTION(BlueprintCallable, Category = "Interaction")
-  void Interact();
-
-  UFUNCTION(BlueprintCallable, Category = "Interaction")
   void TraceForInteractable();
 
-  // ========== Mode Management ==========
+  //==================== MODE MANAGEMENT ====================//
 
-  UFUNCTION(BlueprintCallable, Category = "Mode")
+public:
+  UFUNCTION(BlueprintCallable, Category = "Character")
   void SetPlayerMode(EPlayerMode NewMode);
 
-  UFUNCTION(BlueprintPure, Category = "Mode")
-  EPlayerMode GetPlayerMode() const { return CurrentMode; }
-
-  UFUNCTION(BlueprintCallable, Category = "Mode")
+  UFUNCTION(BlueprintCallable, Category = "Character")
   void EnterTrainControlMode(ABaseVehicle *Train);
 
-  UFUNCTION(BlueprintCallable, Category = "Mode")
+  UFUNCTION(BlueprintCallable, Category = "Character")
   void ExitTrainControlMode();
 
-  UFUNCTION(BlueprintCallable, Category = "Mode")
   void ToggleBuildMode();
-
-  UFUNCTION(BlueprintCallable, Category = "Mode")
   void ExitCurrentMode();
 
-  // ========== Building ==========
+  //==================== BUILDING FUNCTIONS ====================//
 
-  UFUNCTION(BlueprintCallable, Category = "Building")
   void UpdateBuildPreview();
-
-  UFUNCTION(BlueprintCallable, Category = "Building")
   void PlaceBuildObject();
-
-  UFUNCTION(BlueprintCallable, Category = "Building")
   void CancelBuildPreview();
 
-  // ========== Items ==========
+  //==================== ITEM MANAGEMENT ====================//
 
-  UFUNCTION(BlueprintCallable, Category = "Items")
+  UFUNCTION(BlueprintCallable, Category = "Character")
   void EquipItem(AActor *Item);
 
-  UFUNCTION(BlueprintCallable, Category = "Items")
+  UFUNCTION(BlueprintCallable, Category = "Character")
   void UnequipItem();
 
-  // ========== Animation ==========
+  //==================== HEAD ROTATION ====================//
 
-  /** Обновление поворота головы за камерой */
   void UpdateHeadRotation(float DeltaTime);
-
-  /** Скрыть голову от владельца (опционально) */
   void HideHeadForOwner();
-
-  // ========== Getters ==========
-
- // ========== Getters ==========
-
-  UFUNCTION(BlueprintPure, Category = "Train")
-  ABaseVehicle *GetCurrentTrain() const { return CurrentTrain; }
-
-  UFUNCTION(BlueprintPure, Category = "Camera")
-  UCameraComponent *GetFirstPersonCamera() const { return FirstPersonCamera; }
-
-  UFUNCTION(BlueprintPure,
-            Category = "Animation") // ИСПРАВЛЕНО: UFUNCTION вместо UPROPERTY
-  EHandState GetHandState() const { return HandState; }
-
-  UFUNCTION(BlueprintPure, Category = "Animation")
-  bool IsSprinting() const { return bIsSprinting; }
-
-  UFUNCTION(BlueprintPure, Category = "Animation")
-  FRotator GetControlRotationForAnimBP() const { return GetControlRotation(); }
 };

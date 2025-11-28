@@ -20,30 +20,25 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
   PrimaryActorTick.bCanEverTick = true;
 
   // ========== Character Movement Setup ==========
-  bUseControllerRotationYaw = true; // Персонаж поворачивается с камерой
+  bUseControllerRotationYaw = true;
   bUseControllerRotationPitch = false;
   bUseControllerRotationRoll = false;
 
   if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-    MoveComp->bOrientRotationToMovement =
-        false; // НЕ поворачиваться по направлению движения
+    MoveComp->bOrientRotationToMovement = false;
     MoveComp->RotationRate = FRotator(0.f, 540.f, 0.f);
-    MoveComp->MaxWalkSpeed = WalkSpeed; // Используем переменную
+    MoveComp->MaxWalkSpeed = WalkSpeed;
     MoveComp->JumpZVelocity = 400.f;
     MoveComp->AirControl = 0.2f;
   }
 
-  // ========== Full Body Mesh Setup (ВАЖНО!) ==========
-  // Персонаж видим владельцем (full body awareness)
-  GetMesh()->SetOwnerNoSee(false); // владелец ВИДИТ своё тело
+  // ========== Full Body Mesh Setup ==========
+  GetMesh()->SetOwnerNoSee(false);
   GetMesh()->bCastHiddenShadow = true;
 
   // ========== Camera Setup ==========
-  // ВАЖНО: Камера привязана к ГОЛОВЕ через socket!
   FirstPersonCamera =
       CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
-
-  // Привязываем к mesh с socket "head" (нужно создать в скелете)
   FirstPersonCamera->SetupAttachment(GetMesh(), TEXT("head"));
   FirstPersonCamera->SetRelativeLocation(
       FVector(CameraForwardOffset, 0.f, 0.f));
@@ -96,8 +91,7 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
       TEXT("/Game/Input/Actions/IA_ToggleBuildMode"));
   if (IA_BuildObj.Succeeded()) {
     ToggleBuildModeAction = IA_BuildObj.Object;
-    UE_LOG(LogRailsChar, Log,
-           TEXT("Successfully loaded IA_ToggleBuildMode"));
+    UE_LOG(LogRailsChar, Log, TEXT("Successfully loaded IA_ToggleBuildMode"));
   } else {
     UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_ToggleBuildMode"));
   }
@@ -112,7 +106,7 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
     UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_ExitMode"));
   }
 
-  // Sprint Action (НОВОЕ)
+  // Sprint Action
   static ConstructorHelpers::FObjectFinder<UInputAction> IA_SprintObj(
       TEXT("/Game/Input/Actions/IA_Sprint"));
   if (IA_SprintObj.Succeeded()) {
@@ -120,6 +114,16 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
     UE_LOG(LogRailsChar, Log, TEXT("Successfully loaded IA_Sprint"));
   } else {
     UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_Sprint"));
+  }
+
+  // Jump Action
+  static ConstructorHelpers::FObjectFinder<UInputAction> IA_JumpObj(
+      TEXT("/Game/Input/Actions/IA_Jump"));
+  if (IA_JumpObj.Succeeded()) {
+    JumpAction = IA_JumpObj.Object;
+    UE_LOG(LogRailsChar, Log, TEXT("Successfully loaded IA_Jump"));
+  } else {
+    UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_Jump"));
   }
 
   // ========== Initial State ==========
@@ -147,11 +151,8 @@ void ARailsPlayerCharacter::BeginPlay() {
   }
 
   SetPlayerMode(EPlayerMode::Walking);
-
-  // Скрыть голову от владельца (опционально)
   HideHeadForOwner();
 
-  // Установить начальные скорости
   if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
     MoveComp->MaxWalkSpeed = WalkSpeed;
   }
@@ -206,7 +207,7 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
       UE_LOG(LogRailsChar, Error, TEXT("ExitModeAction is null"));
     }
 
-    // Sprint (НОВОЕ)
+    // Sprint
     if (SprintAction) {
       EIC->BindAction(SprintAction, ETriggerEvent::Started, this,
                       &ARailsPlayerCharacter::StartSprint);
@@ -214,6 +215,16 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
                       &ARailsPlayerCharacter::StopSprint);
     } else {
       UE_LOG(LogRailsChar, Error, TEXT("SprintAction is null"));
+    }
+
+    // Jump
+    if (JumpAction) {
+      EIC->BindAction(JumpAction, ETriggerEvent::Started, this,
+                      &ARailsPlayerCharacter::StartJump);
+      EIC->BindAction(JumpAction, ETriggerEvent::Completed, this,
+                      &ARailsPlayerCharacter::StopJump);
+    } else {
+      UE_LOG(LogRailsChar, Error, TEXT("JumpAction is null"));
     }
 
   } else {
@@ -235,7 +246,6 @@ void ARailsPlayerCharacter::Tick(float DeltaTime) {
     UpdateBuildPreview();
   }
 
-  // Обновление поворота головы за камерой
   UpdateHeadRotation(DeltaTime);
 }
 
@@ -287,6 +297,19 @@ void ARailsPlayerCharacter::StopSprint() {
   UE_LOG(LogRailsChar, Log, TEXT("Sprint stopped"));
 }
 
+//==================== JUMP ====================//
+
+void ARailsPlayerCharacter::StartJump() {
+  if (CurrentMode != EPlayerMode::Walking) {
+    return;
+  }
+
+  Jump();
+  UE_LOG(LogRailsChar, Log, TEXT("Jump started"));
+}
+
+void ARailsPlayerCharacter::StopJump() { StopJumping(); }
+
 //==================== INTERACTION ====================//
 
 void ARailsPlayerCharacter::Interact() {
@@ -303,7 +326,7 @@ void ARailsPlayerCharacter::Interact() {
 
   IInteractableInterface::Execute_OnInteract(TargetedInteractable.GetObject(),
                                              GetController());
-  UE_LOG(LogRailsChar, Log, TEXT("✅ Interacted with: %s"),
+  UE_LOG(LogRailsChar, Log, TEXT("Interacted with: %s"),
          *TargetedInteractable.GetObject()->GetName());
 }
 
@@ -476,20 +499,14 @@ void ARailsPlayerCharacter::EquipItem(AActor *Item) {
     return;
   }
 
-  // Unequip previous
   if (CurrentHeldItem) {
     UnequipItem();
   }
 
   CurrentHeldItem = Item;
-
-  // Attach to hand socket
-  // ВАЖНО: скелет должен иметь socket "hand_r" на правой руке
   Item->AttachToComponent(GetMesh(),
                           FAttachmentTransformRules::SnapToTargetIncludingScale,
                           TEXT("hand_r"));
-
-  // Update hand state - можно расширить логику определения типа
   HandState = EHandState::HoldingTool;
 
   UE_LOG(LogRailsChar, Log, TEXT("Equipped item: %s"), *Item->GetName());
@@ -511,11 +528,7 @@ void ARailsPlayerCharacter::UnequipItem() {
 //==================== HEAD ROTATION ====================//
 
 void ARailsPlayerCharacter::UpdateHeadRotation(float DeltaTime) {
-  // Эта функция нужна для передачи данных в AnimBP
-  // Логика вращения головы будет в Animation Blueprint через Control Rig
-
-  // Здесь можно добавить дополнительную логику, если нужно
-  // Например, ограничение поворота головы
+  // Animation Blueprint logic through Control Rig
 }
 
 void ARailsPlayerCharacter::HideHeadForOwner() {
@@ -523,19 +536,9 @@ void ARailsPlayerCharacter::HideHeadForOwner() {
     return;
   }
 
-  // ВАРИАНТ 1: Через Material Section (простой способ)
-  // Нужно знать index секции головы (обычно 0 или 1)
-  // Найдите его в Static Mesh Editor
-  // GetMesh()->HideBoneByName(TEXT("head"), EPhysBodyOp::PBO_None);
-
-  // ВАРИАНТ 2: Через Material Parameter (требует настройки материала)
-  // Создайте в материале персонажа Scalar Parameter "HideHead"
-  // И логику: if (HideHead > 0.5) Opacity = 0
-
   UMaterialInstanceDynamic *HeadMat =
       GetMesh()->CreateDynamicMaterialInstance(0);
   if (HeadMat) {
-    // Раскомментируйте если настроили материал:
     // HeadMat->SetScalarParameterValue(TEXT("HideHead"), 1.0f);
   }
 
