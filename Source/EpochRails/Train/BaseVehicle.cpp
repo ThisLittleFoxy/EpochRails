@@ -4,8 +4,12 @@
 #include "Camera/CameraComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "InputAction.h"
+#include "InputMappingContext.h"
 #include "Train/LocomotionComponent.h"
 #include "Train/RailSplineActor.h"
 
@@ -42,37 +46,33 @@ ABaseVehicle::ABaseVehicle() {
   VehicleMeshScale = FVector(1.0f, 1.0f, 1.0f);
   VehicleMeshRotation = FRotator(0.0f, 0.0f, 0.0f);
 
-  // Initialize driver reference
+  // Initialize references
   CurrentDriver = nullptr;
   CurrentRailSpline = nullptr;
 
-  // AI controller class
+  // Input settings
+  InputMappingPriority = 1;
+
+  // AI controller
   AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 }
 
 void ABaseVehicle::BeginPlay() {
   Super::BeginPlay();
 
-  // Apply initial mesh transform
   ApplyVehicleMeshTransform();
 
-  // Validate locomotion component
   if (!LocomotionComp) {
     UE_LOG(LogTemp, Error, TEXT("BaseVehicle: LocomotionComponent is null!"));
     return;
   }
 
-  // Set initial rail spline if assigned
   if (CurrentRailSpline) {
     LocomotionComp->SetRailSpline(CurrentRailSpline);
   }
 }
 
-void ABaseVehicle::Tick(float DeltaTime) {
-  Super::Tick(DeltaTime);
-
-  // Locomotion component handles movement logic
-}
+void ABaseVehicle::Tick(float DeltaTime) { Super::Tick(DeltaTime); }
 
 void ABaseVehicle::SetupPlayerInputComponent(
     UInputComponent *PlayerInputComponent) {
@@ -83,12 +83,37 @@ void ABaseVehicle::SetupPlayerInputComponent(
     return;
   }
 
-  // Bind input axes
-  PlayerInputComponent->BindAxis("MoveForward", this,
-                                 &ABaseVehicle::MoveForward);
-  PlayerInputComponent->BindAxis("MoveBackward", this,
-                                 &ABaseVehicle::MoveBackward);
-  PlayerInputComponent->BindAxis("Brake", this, &ABaseVehicle::Brake);
+  // Cast to Enhanced Input Component
+  UEnhancedInputComponent *EnhancedInputComponent =
+      Cast<UEnhancedInputComponent>(PlayerInputComponent);
+  if (!EnhancedInputComponent) {
+    UE_LOG(LogTemp, Error,
+           TEXT("BaseVehicle: Failed to cast to EnhancedInputComponent!"));
+    return;
+  }
+
+  // Bind Enhanced Input Actions
+  if (ThrottleAction) {
+    EnhancedInputComponent->BindAction(ThrottleAction, ETriggerEvent::Triggered,
+                                       this, &ABaseVehicle::OnThrottle);
+    EnhancedInputComponent->BindAction(ThrottleAction, ETriggerEvent::Completed,
+                                       this, &ABaseVehicle::OnThrottle);
+  }
+
+  if (BrakeAction) {
+    EnhancedInputComponent->BindAction(BrakeAction, ETriggerEvent::Triggered,
+                                       this, &ABaseVehicle::OnBrake);
+    EnhancedInputComponent->BindAction(BrakeAction, ETriggerEvent::Completed,
+                                       this, &ABaseVehicle::OnBrake);
+  }
+
+  if (ExitAction) {
+    EnhancedInputComponent->BindAction(ExitAction, ETriggerEvent::Started, this,
+                                       &ABaseVehicle::OnExitVehicle);
+  }
+
+  UE_LOG(LogTemp, Log,
+         TEXT("BaseVehicle: Enhanced Input bindings set up successfully"));
 }
 
 void ABaseVehicle::ApplyVehicleMeshTransform() {
@@ -113,24 +138,27 @@ void ABaseVehicle::EnterVehicle(APawn *Player) {
   }
 
   if (IsOccupied()) {
-    UE_LOG(LogTemp, Warning,
-           TEXT("BaseVehicle: Already occupied by another player!"));
+    UE_LOG(LogTemp, Warning, TEXT("BaseVehicle: Already occupied!"));
     return;
   }
 
-  // Store driver reference
   CurrentDriver = Player;
 
-  // Transfer control to this vehicle
   AController *PlayerController = Player->GetController();
-  if (PlayerController) {
-    PlayerController->Possess(this);
-    UE_LOG(LogTemp, Log,
-           TEXT("BaseVehicle: Player entered vehicle successfully"));
-  } else {
+  if (!PlayerController) {
     UE_LOG(LogTemp, Error, TEXT("BaseVehicle: Player has no controller!"));
     CurrentDriver = nullptr;
+    return;
   }
+
+  // Possess vehicle
+  PlayerController->Possess(this);
+
+  // Add input mapping context
+  AddInputMappingContext();
+
+  UE_LOG(LogTemp, Log,
+         TEXT("BaseVehicle: Player entered vehicle successfully"));
 }
 
 void ABaseVehicle::ExitVehicle() {
@@ -140,16 +168,17 @@ void ABaseVehicle::ExitVehicle() {
   }
 
   if (!CurrentDriver) {
-    UE_LOG(LogTemp, Error,
-           TEXT("BaseVehicle: CurrentDriver is null but IsOccupied returned "
-                "true!"));
     return;
   }
 
-  // Return control to player character
   AController *PlayerController = GetController();
   if (PlayerController) {
+    // Remove input mapping context
+    RemoveInputMappingContext();
+
+    // Return control to player
     PlayerController->Possess(CurrentDriver);
+
     UE_LOG(LogTemp, Log,
            TEXT("BaseVehicle: Player exited vehicle successfully"));
   }
@@ -157,32 +186,66 @@ void ABaseVehicle::ExitVehicle() {
   CurrentDriver = nullptr;
 }
 
-void ABaseVehicle::MoveForward(float Value) {
+void ABaseVehicle::OnThrottle(const FInputActionValue &Value) {
   if (!LocomotionComp) {
     return;
   }
 
-  if (FMath::Abs(Value) > 0.01f) {
-    LocomotionComp->SetThrottle(Value);
+  const float ThrottleValue = Value.Get<float>();
+  LocomotionComp->SetThrottle(ThrottleValue);
+}
+
+void ABaseVehicle::OnBrake(const FInputActionValue &Value) {
+  if (!LocomotionComp) {
+    return;
+  }
+
+  const float BrakeValue = Value.Get<float>();
+  LocomotionComp->ApplyBrake(BrakeValue);
+}
+
+void ABaseVehicle::OnExitVehicle(const FInputActionValue &Value) {
+  ExitVehicle();
+}
+
+void ABaseVehicle::AddInputMappingContext() {
+  if (!VehicleMappingContext) {
+    UE_LOG(LogTemp, Warning,
+           TEXT("BaseVehicle: VehicleMappingContext not assigned!"));
+    return;
+  }
+
+  APlayerController *PlayerController =
+      Cast<APlayerController>(GetController());
+  if (!PlayerController) {
+    return;
+  }
+
+  UEnhancedInputLocalPlayerSubsystem *Subsystem =
+      ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(
+          PlayerController->GetLocalPlayer());
+  if (Subsystem) {
+    Subsystem->AddMappingContext(VehicleMappingContext, InputMappingPriority);
+    UE_LOG(LogTemp, Log, TEXT("BaseVehicle: Input mapping context added"));
   }
 }
 
-void ABaseVehicle::MoveBackward(float Value) {
-  if (!LocomotionComp) {
+void ABaseVehicle::RemoveInputMappingContext() {
+  if (!VehicleMappingContext) {
     return;
   }
 
-  if (FMath::Abs(Value) > 0.01f) {
-    LocomotionComp->SetThrottle(-Value);
-  }
-}
-
-void ABaseVehicle::Brake(float Value) {
-  if (!LocomotionComp) {
+  APlayerController *PlayerController =
+      Cast<APlayerController>(GetController());
+  if (!PlayerController) {
     return;
   }
 
-  if (FMath::Abs(Value) > 0.01f) {
-    LocomotionComp->ApplyBrake(Value);
+  UEnhancedInputLocalPlayerSubsystem *Subsystem =
+      ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(
+          PlayerController->GetLocalPlayer());
+  if (Subsystem) {
+    Subsystem->RemoveMappingContext(VehicleMappingContext);
+    UE_LOG(LogTemp, Log, TEXT("BaseVehicle: Input mapping context removed"));
   }
 }

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
+#include "InputActionValue.h"
 #include "BaseVehicle.generated.h"
 
 class ULocomotionComponent;
@@ -12,6 +13,8 @@ class UStaticMeshComponent;
 class USceneComponent;
 class UCameraComponent;
 class USpringArmComponent;
+class UInputMappingContext;
+class UInputAction;
 
 UCLASS()
 class EPOCHRAILS_API ABaseVehicle : public APawn {
@@ -28,22 +31,19 @@ public:
   virtual void SetupPlayerInputComponent(
       class UInputComponent *PlayerInputComponent) override;
 
-  // Root component
+  // Components
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
   TObjectPtr<USceneComponent> RootComp;
 
-  // Main vehicle mesh
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
   TObjectPtr<UStaticMeshComponent> VehicleMesh;
 
-  // Camera components
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
   TObjectPtr<USpringArmComponent> SpringArm;
 
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
   TObjectPtr<UCameraComponent> Camera;
 
-  // Locomotion component for movement
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
   TObjectPtr<ULocomotionComponent> LocomotionComp;
 
@@ -57,6 +57,22 @@ public:
   // Rail spline reference
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vehicle Settings")
   TObjectPtr<ARailSplineActor> CurrentRailSpline;
+
+  // Enhanced Input System
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+  TObjectPtr<UInputMappingContext> VehicleMappingContext;
+
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+  TObjectPtr<UInputAction> ThrottleAction;
+
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+  TObjectPtr<UInputAction> BrakeAction;
+
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+  TObjectPtr<UInputAction> ExitAction;
+
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+  int32 InputMappingPriority;
 
   // Player interaction
   UFUNCTION(BlueprintCallable, Category = "Vehicle")
@@ -72,15 +88,17 @@ public:
   APawn *GetCurrentDriver() const { return CurrentDriver; }
 
 protected:
-  // Cached reference to current driver
   UPROPERTY(BlueprintReadOnly, Category = "Vehicle")
   TObjectPtr<APawn> CurrentDriver;
 
-  // Apply mesh transform settings
   void ApplyVehicleMeshTransform();
 
-  // Input handling
-  void MoveForward(float Value);
-  void MoveBackward(float Value);
-  void Brake(float Value);
+  // Enhanced Input callbacks
+  void OnThrottle(const FInputActionValue &Value);
+  void OnBrake(const FInputActionValue &Value);
+  void OnExitVehicle(const FInputActionValue &Value);
+
+  // Input context management
+  void AddInputMappingContext();
+  void RemoveInputMappingContext();
 };
