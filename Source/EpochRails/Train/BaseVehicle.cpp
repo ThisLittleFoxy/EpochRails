@@ -1,13 +1,11 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Train/BaseVehicle.h"
-#include "Camera/CameraComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/Controller.h"
-#include "GameFramework/SpringArmComponent.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "Train/LocomotionComponent.h"
@@ -26,32 +24,13 @@ ABaseVehicle::ABaseVehicle() {
   VehicleMesh->SetupAttachment(RootComp);
   VehicleMesh->SetCollisionProfileName(TEXT("Vehicle"));
 
-  // Create camera spring arm
-  SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
-  SpringArm->SetupAttachment(RootComp);
-  SpringArm->TargetArmLength = 600.0f;
-  SpringArm->bUsePawnControlRotation = true;
-  SpringArm->bEnableCameraLag = true;
-  SpringArm->CameraLagSpeed = 3.0f;
-
-  // Create camera
-  Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
-  Camera->SetupAttachment(SpringArm, USpringArmComponent::SocketName);
-
   // Create locomotion component
   LocomotionComp =
       CreateDefaultSubobject<ULocomotionComponent>(TEXT("LocomotionComponent"));
 
-  // Default transform settings
-  VehicleMeshScale = FVector(1.0f, 1.0f, 1.0f);
-  VehicleMeshRotation = FRotator(0.0f, 0.0f, 0.0f);
-
-  // Initialize references
+  // Initialize only pointers to nullptr
   CurrentDriver = nullptr;
   CurrentRailSpline = nullptr;
-
-  // Input settings
-  InputMappingPriority = 1;
 
   // AI controller
   AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
@@ -60,6 +39,7 @@ ABaseVehicle::ABaseVehicle() {
 void ABaseVehicle::BeginPlay() {
   Super::BeginPlay();
 
+  // Apply mesh transform from Blueprint values
   ApplyVehicleMeshTransform();
 
   if (!LocomotionComp) {
@@ -122,6 +102,7 @@ void ABaseVehicle::ApplyVehicleMeshTransform() {
     return;
   }
 
+  // Apply transform values from Blueprint
   VehicleMesh->SetRelativeScale3D(VehicleMeshScale);
   VehicleMesh->SetRelativeRotation(VehicleMeshRotation);
 

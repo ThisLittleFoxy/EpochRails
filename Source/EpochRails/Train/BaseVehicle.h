@@ -11,8 +11,6 @@ class ULocomotionComponent;
 class ARailSplineActor;
 class UStaticMeshComponent;
 class USceneComponent;
-class UCameraComponent;
-class USpringArmComponent;
 class UInputMappingContext;
 class UInputAction;
 
@@ -39,15 +37,9 @@ public:
   TObjectPtr<UStaticMeshComponent> VehicleMesh;
 
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-  TObjectPtr<USpringArmComponent> SpringArm;
-
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-  TObjectPtr<UCameraComponent> Camera;
-
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
   TObjectPtr<ULocomotionComponent> LocomotionComp;
 
-  // Vehicle mesh transform settings
+  // Vehicle mesh transform settings (NO default values - taken from Blueprint)
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vehicle Settings")
   FVector VehicleMeshScale;
 

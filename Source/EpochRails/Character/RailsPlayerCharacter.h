@@ -39,6 +39,32 @@ protected:
   SetupPlayerInputComponent(UInputComponent *PlayerInputComponent) override;
   virtual void Tick(float DeltaTime) override;
 
+  // ========== Input Actions (moved from private to protected) ==========
+
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+  UInputMappingContext *DefaultMappingContext;
+
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+  UInputAction *MoveAction;
+
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+  UInputAction *LookAction;
+
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+  UInputAction *InteractAction;
+
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+  UInputAction *ToggleBuildModeAction;
+
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+  UInputAction *ExitModeAction;
+
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+  UInputAction *SprintAction;
+
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+  UInputAction *JumpAction;
+
 private:
   // ========== Camera ==========
 
@@ -49,29 +75,6 @@ private:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera",
             meta = (AllowPrivateAccess = "true"))
   float CameraForwardOffset = 10.0f;
-
-  // ========== Input Actions ==========
-
-  UPROPERTY(EditDefaultsOnly, Category = "Input")
-  UInputMappingContext *DefaultMappingContext;
-
-  UPROPERTY(EditDefaultsOnly, Category = "Input")
-  UInputAction *MoveAction;
-
-  UPROPERTY(EditDefaultsOnly, Category = "Input")
-  UInputAction *LookAction;
-
-  UPROPERTY(EditDefaultsOnly, Category = "Input")
-  UInputAction *InteractAction;
-
-  UPROPERTY(EditDefaultsOnly, Category = "Input")
-  UInputAction *ToggleBuildModeAction;
-
-  UPROPERTY(EditDefaultsOnly, Category = "Input")
-  UInputAction *ExitModeAction;
-
-  UPROPERTY(EditDefaultsOnly, Category = "Input")
-  UInputAction *SprintAction;
 
   // ========== Interaction ==========
 
@@ -202,13 +205,16 @@ public:
 
   // ========== Getters ==========
 
+ // ========== Getters ==========
+
   UFUNCTION(BlueprintPure, Category = "Train")
   ABaseVehicle *GetCurrentTrain() const { return CurrentTrain; }
 
   UFUNCTION(BlueprintPure, Category = "Camera")
   UCameraComponent *GetFirstPersonCamera() const { return FirstPersonCamera; }
 
-  UFUNCTION(BlueprintPure, Category = "Animation")
+  UFUNCTION(BlueprintPure,
+            Category = "Animation") // »—œ–¿¬À≈ÕŒ: UFUNCTION ‚ÏÂÒÚÓ UPROPERTY
   EHandState GetHandState() const { return HandState; }
 
   UFUNCTION(BlueprintPure, Category = "Animation")
