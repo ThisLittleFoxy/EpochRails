@@ -47,7 +47,10 @@ public:
 
   //==================== COMPONENTS ====================//
 
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+  // Camera component - should be created in Blueprint
+  // Make sure to name it "FirstPersonCamera" in Blueprint to match this
+  // variable
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
   UCameraComponent *FirstPersonCamera;
 
   //==================== INPUT ====================//
@@ -100,6 +103,8 @@ public:
 
   //==================== CAMERA ====================//
 
+  // Legacy property - kept for reference but camera creation is now in
+  // Blueprint
   UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera")
   float CameraForwardOffset = 15.0f;
 
@@ -175,6 +180,7 @@ public:
 
   //==================== ANIMATION ====================//
 
+public:
   // Get current movement speed
   UFUNCTION(BlueprintPure, Category = "Animation")
   float GetMovementSpeed() const;
