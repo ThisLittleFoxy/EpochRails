@@ -172,4 +172,31 @@ public:
 
   void UpdateHeadRotation(float DeltaTime);
   void HideHeadForOwner();
+
+  //==================== ANIMATION ====================//
+
+public:
+  // Get current movement speed
+  UFUNCTION(BlueprintPure, Category = "Animation")
+  float GetMovementSpeed() const;
+
+  // Get normalized speed (0-1 range for walk-to-sprint)
+  UFUNCTION(BlueprintPure, Category = "Animation")
+  float GetNormalizedSpeed() const;
+
+  // Get movement direction relative to character
+  UFUNCTION(BlueprintPure, Category = "Animation")
+  float GetMovementDirection() const;
+
+  // Check if character is moving
+  UFUNCTION(BlueprintPure, Category = "Animation")
+  bool IsMoving() const;
+
+  // Check if character is in air
+  UFUNCTION(BlueprintPure, Category = "Animation")
+  bool IsInAir() const;
+
+  // Get current target speed (walk or sprint)
+  UFUNCTION(BlueprintPure, Category = "Animation")
+  float GetTargetSpeed() const;
 };

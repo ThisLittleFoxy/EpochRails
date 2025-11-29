@@ -545,3 +545,57 @@ void ARailsPlayerCharacter::HideHeadForOwner() {
   UE_LOG(LogRailsChar, Log,
          TEXT("Head hidden for owner (if material configured)"));
 }
+
+//==================== ANIMATION FUNCTIONS ====================//
+
+float ARailsPlayerCharacter::GetMovementSpeed() const {
+  if (const UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
+    return MoveComp->Velocity.Size();
+  }
+  return 0.0f;
+}
+
+float ARailsPlayerCharacter::GetNormalizedSpeed() const {
+  if (const UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
+    const float CurrentSpeed = MoveComp->Velocity.Size();
+    const float MaxSpeed = MoveComp->MaxWalkSpeed;
+    return MaxSpeed > 0.0f ? FMath::Clamp(CurrentSpeed / MaxSpeed, 0.0f, 1.0f)
+                           : 0.0f;
+  }
+  return 0.0f;
+}
+
+float ARailsPlayerCharacter::GetMovementDirection() const {
+  if (const UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
+    if (MoveComp->Velocity.SizeSquared() > 0.0f) {
+      const FVector VelocityNormal = MoveComp->Velocity.GetSafeNormal2D();
+      const FVector ForwardVector = GetActorForwardVector();
+      const FVector RightVector = GetActorRightVector();
+
+      const float ForwardDot =
+          FVector::DotProduct(VelocityNormal, ForwardVector);
+      const float RightDot = FVector::DotProduct(VelocityNormal, RightVector);
+
+      return FMath::Atan2(RightDot, ForwardDot) * (180.0f / PI);
+    }
+  }
+  return 0.0f;
+}
+
+bool ARailsPlayerCharacter::IsMoving() const {
+  if (const UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
+    return MoveComp->Velocity.SizeSquared() > 25.0f; // Threshold ~5 units/sec
+  }
+  return false;
+}
+
+bool ARailsPlayerCharacter::IsInAir() const {
+  if (const UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
+    return MoveComp->IsFalling();
+  }
+  return false;
+}
+
+float ARailsPlayerCharacter::GetTargetSpeed() const {
+  return bIsSprinting ? SprintSpeed : WalkSpeed;
+}
