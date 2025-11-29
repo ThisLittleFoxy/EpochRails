@@ -81,10 +81,10 @@ public:
   //==================== MOVEMENT ====================//
 
   UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Movement")
-  float WalkSpeed = 300.0f;
+  float WalkSpeed = 200.0f;
 
   UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Movement")
-  float SprintSpeed = 1000.0f;
+  float SprintSpeed = 400.0f;
 
   UPROPERTY(BlueprintReadOnly, Category = "Movement")
   bool bIsSprinting;
