@@ -175,7 +175,6 @@ public:
 
   //==================== ANIMATION ====================//
 
-public:
   // Get current movement speed
   UFUNCTION(BlueprintPure, Category = "Animation")
   float GetMovementSpeed() const;
