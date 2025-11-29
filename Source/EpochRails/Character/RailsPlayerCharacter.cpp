@@ -36,9 +36,16 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
   GetMesh()->SetOwnerNoSee(false);
   GetMesh()->bCastHiddenShadow = true;
 
-  // ========== Camera Setup ==========
-  // Camera is now created in Blueprint - set pointer to null
-  // You must add Camera Component in Blueprint and name it "FirstPersonCamera"
+// ========== Camera Setup ==========
+  // REMOVED: Camera will be created in Blueprint
+  // FirstPersonCamera =
+  //     CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
+  // FirstPersonCamera->SetupAttachment(GetMesh(), TEXT("head"));
+  // FirstPersonCamera->SetRelativeLocation(
+  //     FVector(CameraForwardOffset, 0.f, 0.f));
+  // FirstPersonCamera->bUsePawnControlRotation = true;
+
+  // Set pointer to nullptr to avoid issues
   FirstPersonCamera = nullptr;
 
   // ========== Input Mapping Context ==========
@@ -153,7 +160,6 @@ void ARailsPlayerCharacter::BeginPlay() {
   if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
     MoveComp->MaxWalkSpeed = WalkSpeed;
   }
-
   // Validate camera component
   if (!FirstPersonCamera) {
     UE_LOG(LogRailsChar, Warning,
@@ -338,7 +344,7 @@ void ARailsPlayerCharacter::Interact() {
 }
 
 void ARailsPlayerCharacter::TraceForInteractable() {
-  if (!Controller || !FirstPersonCamera) {
+  if (!Controller) {
     return;
   }
 
@@ -591,7 +597,7 @@ float ARailsPlayerCharacter::GetMovementDirection() const {
 
 bool ARailsPlayerCharacter::IsMoving() const {
   if (const UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-    return MoveComp->Velocity.SizeSquared() > 25.0f;
+    return MoveComp->Velocity.SizeSquared() > 25.0f; // Threshold ~5 units/sec
   }
   return false;
 }
