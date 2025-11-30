@@ -8,6 +8,7 @@
 #include "RailsPlayerCharacter.generated.h"
 
 class UCameraComponent;
+class USpringArmComponent;
 class UInputMappingContext;
 class UInputAction;
 class ABaseVehicle;
@@ -45,12 +46,17 @@ protected:
 public:
   virtual void Tick(float DeltaTime) override;
 
-//==================== COMPONENTS ====================//
+  //==================== COMPONENTS ====================//
 
-  // Make camera optional - can be created in Blueprint
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+  // Spring arm for camera smoothing and stability
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera",
+            meta = (AllowPrivateAccess = "true"))
+  USpringArmComponent *CameraArm;
+
+  // First person camera - created in C++ but configurable in Blueprint
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera",
+            meta = (AllowPrivateAccess = "true"))
   UCameraComponent *FirstPersonCamera;
-
 
   //==================== INPUT ====================//
 
@@ -102,6 +108,19 @@ public:
 
   //==================== CAMERA ====================//
 
+  // Socket name to attach camera to (for animation support outside train)
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+  FName CameraSocketName = TEXT("head");
+
+  // Camera offset from socket (used when camera is attached back to mesh)
+  UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera")
+  FVector CameraRelativeLocation = FVector(15.0f, 0.0f, 0.0f);
+
+  // Camera rotation offset from socket
+  UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera")
+  FRotator CameraRelativeRotation = FRotator::ZeroRotator;
+
+  // Legacy - keep for backward compatibility
   UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera")
   float CameraForwardOffset = 15.0f;
 
@@ -120,6 +139,12 @@ public:
 
   UPROPERTY(BlueprintReadOnly, Category = "Character")
   ABaseVehicle *CurrentTrain;
+
+  //==================== TRAIN MOVEMENT SYNC ====================//
+
+  // Reference to train interior player is currently inside (for walking mode)
+  UPROPERTY(BlueprintReadWrite, Category = "Train")
+  ABaseVehicle *CurrentTrainInterior;
 
   //==================== BUILDING ====================//
 
@@ -200,4 +225,11 @@ public:
   // Get current target speed (walk or sprint)
   UFUNCTION(BlueprintPure, Category = "Animation")
   float GetTargetSpeed() const;
+
+  //==================== PRIVATE ====================//
+
+private:
+  // Manual train synchronization variables (used together with SetBase)
+  FVector LastTrainLocation;
+  bool bTrainSyncInitialized;
 };
