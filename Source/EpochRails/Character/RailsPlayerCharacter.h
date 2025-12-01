@@ -68,22 +68,6 @@ protected:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Sprint")
   float SprintSpeed = 800.0f;
 
-  /** Is the character currently sprinting? (for Animation Blueprint) */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Sprint")
-  bool bIsSprinting = false;
-
-  /** Current speed of the character (for Animation Blueprint) */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
-  float CurrentSpeed = 0.0f;
-
-  /** Current movement direction (for Animation Blueprint) */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
-  float MovementDirection = 0.0f;
-
-  /** Is the character in the air? (for Animation Blueprint) */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
-  bool bIsInAir = false;
-
   // ========== Input Actions ==========
 
   /** Jump Input Action */
@@ -105,6 +89,25 @@ protected:
   /** Sprint Input Action */
   UPROPERTY(EditAnywhere, Category = "Input")
   UInputAction *SprintAction;
+
+public:
+  // ========== Animation Variables (PUBLIC for AnimBP access) ==========
+
+  /** Is the character currently sprinting? (for Animation Blueprint) */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
+  bool bIsSprinting = false;
+
+  /** Current speed of the character (for Animation Blueprint) */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
+  float CurrentSpeed = 0.0f;
+
+  /** Current movement direction (for Animation Blueprint) */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
+  float MovementDirection = 0.0f;
+
+  /** Is the character in the air? (for Animation Blueprint) */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
+  bool bIsInAir = false;
 
 public:
   /** Constructor */
