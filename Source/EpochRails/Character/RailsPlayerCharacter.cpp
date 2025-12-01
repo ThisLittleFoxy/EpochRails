@@ -1,691 +1,213 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Character/RailsPlayerCharacter.h"
-
 #include "Camera/CameraComponent.h"
-#include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
-#include "DrawDebugHelpers.h"
+#include "Engine/LocalPlayer.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "EpochRails.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
-#include "InputAction.h"
-#include "InputMappingContext.h"
-#include "Interaction/InteractableInterface.h"
-#include "Train/BaseVehicle.h"
-#include "Utils/AimTraceService.h"
-
-DEFINE_LOG_CATEGORY_STATIC(LogRailsChar, Log, All);
-
-//==================== CONSTRUCTOR ====================//
+#include "InputActionValue.h"
 
 ARailsPlayerCharacter::ARailsPlayerCharacter() {
-  PrimaryActorTick.bCanEverTick = true;
-  PrimaryActorTick.TickGroup = TG_PostPhysics; // Character after physics/train
+  // Set size for collision capsule
+  GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 
-  // ========== Character Movement Setup ==========
-  bUseControllerRotationYaw = true;
+  // Don't rotate when the controller rotates. Let that just affect the camera.
   bUseControllerRotationPitch = false;
+  bUseControllerRotationYaw = false;
   bUseControllerRotationRoll = false;
 
-  if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-    MoveComp->bOrientRotationToMovement = false;
-    MoveComp->RotationRate = FRotator(0.f, 540.f, 0.f);
-    MoveComp->MaxWalkSpeed = WalkSpeed;
-    MoveComp->JumpZVelocity = 400.f;
-    MoveComp->AirControl = 0.2f;
+  // Configure character movement
+  GetCharacterMovement()->bOrientRotationToMovement = true;
+  GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
+  GetCharacterMovement()->JumpZVelocity = 500.f;
+  GetCharacterMovement()->AirControl = 0.35f;
+  GetCharacterMovement()->MaxWalkSpeed = 500.f;
+  GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
+  GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
+  GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
 
-    // For smoother interaction with moving train
-    MoveComp->bEnablePhysicsInteraction = false;
-  }
+  // Create a camera boom (pulls in towards the player if there is a collision)
+  CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
+  CameraBoom->SetupAttachment(RootComponent);
+  CameraBoom->TargetArmLength = 400.0f;
+  CameraBoom->bUsePawnControlRotation = true;
 
-  // ========== Full Body Mesh Setup ==========
-  GetMesh()->SetOwnerNoSee(false);
-  GetMesh()->bCastHiddenShadow = true;
-
-// ========== Camera & Spring Arm Setup ==========
-  CameraArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraArm"));
-  CameraArm->SetupAttachment(GetCapsuleComponent());
-  CameraArm->TargetArmLength = 0.0f;
-  CameraArm->bUsePawnControlRotation = true;
-  CameraArm->bDoCollisionTest = false;
-  CameraArm->bEnableCameraLag = true;
-  CameraArm->CameraLagSpeed = 20.0f;
-  CameraArm->CameraLagMaxDistance = 0.0f;
-  // ДОБАВЬ ЭТО:
-  CameraArm->PrimaryComponentTick.TickGroup =
-      TG_PostPhysics; // Tick AFTER physics
-
-  FirstPersonCamera =
-      CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
-  FirstPersonCamera->SetupAttachment(CameraArm,
-                                     USpringArmComponent::SocketName);
-  FirstPersonCamera->SetRelativeLocation(FVector::ZeroVector);
-  FirstPersonCamera->SetRelativeRotation(FRotator::ZeroRotator);
-  FirstPersonCamera->bUsePawnControlRotation = false;
-  FirstPersonCamera->PrimaryComponentTick.bCanEverTick = true;
-  // ИЗМЕНИ ЭТО:
-  FirstPersonCamera->PrimaryComponentTick.TickGroup =
-      TG_PostPhysics; // Tick AFTER everything
-
-
-  // Camera socket name for backward compatibility
-  CameraSocketName = TEXT("head");
-
-
-  // ========== Train Synchronization Initialization ==========
-  CurrentTrainInterior = nullptr;
-  bTrainSyncInitialized = false;
-  LastTrainLocation = FVector::ZeroVector;
-
-  // ========== Input Mapping Context ==========
-  static ConstructorHelpers::FObjectFinder<UInputMappingContext> IMCObj(
-      TEXT("/Game/Input/IMC_RailsDefault"));
-  if (IMCObj.Succeeded()) {
-    DefaultMappingContext = IMCObj.Object;
-    UE_LOG(LogRailsChar, Log, TEXT("Successfully loaded IMC_RailsDefault"));
-  } else {
-    UE_LOG(LogRailsChar, Error, TEXT("Failed to load IMC_RailsDefault"));
-  }
-
-  // ========== Input Actions ==========
-
-  // Move Action
-  static ConstructorHelpers::FObjectFinder<UInputAction> IA_MoveObj(
-      TEXT("/Game/Input/Actions/IA_Move"));
-  if (IA_MoveObj.Succeeded()) {
-    MoveAction = IA_MoveObj.Object;
-    UE_LOG(LogRailsChar, Log, TEXT("Successfully loaded IA_Move"));
-  } else {
-    UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_Move"));
-  }
-
-  // Look Action
-  static ConstructorHelpers::FObjectFinder<UInputAction> IA_LookObj(
-      TEXT("/Game/Input/Actions/IA_Look"));
-  if (IA_LookObj.Succeeded()) {
-    LookAction = IA_LookObj.Object;
-    UE_LOG(LogRailsChar, Log, TEXT("Successfully loaded IA_Look"));
-  } else {
-    UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_Look"));
-  }
-
-  // Interact Action
-  static ConstructorHelpers::FObjectFinder<UInputAction> IA_InteractObj(
-      TEXT("/Game/Input/Actions/IA_Interact"));
-  if (IA_InteractObj.Succeeded()) {
-    InteractAction = IA_InteractObj.Object;
-    UE_LOG(LogRailsChar, Log, TEXT("Successfully loaded IA_Interact"));
-  } else {
-    UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_Interact"));
-  }
-
-  // Toggle Build Mode Action
-  static ConstructorHelpers::FObjectFinder<UInputAction> IA_BuildObj(
-      TEXT("/Game/Input/Actions/IA_ToggleBuildMode"));
-  if (IA_BuildObj.Succeeded()) {
-    ToggleBuildModeAction = IA_BuildObj.Object;
-    UE_LOG(LogRailsChar, Log, TEXT("Successfully loaded IA_ToggleBuildMode"));
-  } else {
-    UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_ToggleBuildMode"));
-  }
-
-  // Exit Mode Action
-  static ConstructorHelpers::FObjectFinder<UInputAction> IA_ExitObj(
-      TEXT("/Game/Input/Actions/IA_ExitMode"));
-  if (IA_ExitObj.Succeeded()) {
-    ExitModeAction = IA_ExitObj.Object;
-    UE_LOG(LogRailsChar, Log, TEXT("Successfully loaded IA_ExitMode"));
-  } else {
-    UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_ExitMode"));
-  }
-
-  // Sprint Action
-  static ConstructorHelpers::FObjectFinder<UInputAction> IA_SprintObj(
-      TEXT("/Game/Input/Actions/IA_Sprint"));
-  if (IA_SprintObj.Succeeded()) {
-    SprintAction = IA_SprintObj.Object;
-    UE_LOG(LogRailsChar, Log, TEXT("Successfully loaded IA_Sprint"));
-  } else {
-    UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_Sprint"));
-  }
-
-  // Jump Action
-  static ConstructorHelpers::FObjectFinder<UInputAction> IA_JumpObj(
-      TEXT("/Game/Input/Actions/IA_Jump"));
-  if (IA_JumpObj.Succeeded()) {
-    JumpAction = IA_JumpObj.Object;
-    UE_LOG(LogRailsChar, Log, TEXT("Successfully loaded IA_Jump"));
-  } else {
-    UE_LOG(LogRailsChar, Error, TEXT("Failed to load IA_Jump"));
-  }
-
-  // ========== Initial State ==========
-  HandState = EHandState::Empty;
-  CurrentHeldItem = nullptr;
-  bIsSprinting = false;
+  // Create a follow camera
+  FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
+  FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
+  FollowCamera->bUsePawnControlRotation = false;
 }
-
-//==================== BEGIN PLAY ====================//
 
 void ARailsPlayerCharacter::BeginPlay() {
   Super::BeginPlay();
 
-  if (APlayerController *PC = Cast<APlayerController>(GetController())) {
-    if (UEnhancedInputLocalPlayerSubsystem *Subsystem =
-            ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(
-                PC->GetLocalPlayer())) {
-      if (DefaultMappingContext) {
-        Subsystem->AddMappingContext(DefaultMappingContext, 0);
-        UE_LOG(LogRailsChar, Log, TEXT("Added Input Mapping Context"));
-      } else {
-        UE_LOG(LogRailsChar, Error, TEXT("DefaultMappingContext is null!"));
-      }
-    }
+  // Setup camera attachment based on configuration
+  SetupCameraAttachment();
+}
+
+void ARailsPlayerCharacter::SetupCameraAttachment() {
+  if (!CameraBoom || !GetMesh()) {
+    return;
   }
 
-  SetPlayerMode(EPlayerMode::Walking);
-  HideHeadForOwner();
+  // If we should attach to a socket
+  if (bAttachCameraToSocket && !CameraSocketName.IsNone()) {
+    UE_LOG(LogEpochRails, Log, TEXT("Attaching camera boom to socket: %s"),
+           *CameraSocketName.ToString());
 
-  if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-    MoveComp->MaxWalkSpeed = WalkSpeed;
-  }
+    // Define attachment rules
+    FAttachmentTransformRules AttachRules(
+        EAttachmentRule::SnapToTarget, // Location snaps to socket
+        bIgnoreSocketRotation ? EAttachmentRule::KeepWorld
+                              : EAttachmentRule::SnapToTarget, // Rotation
+        EAttachmentRule::KeepWorld,                            // Scale
+        false);
 
-  if (!FirstPersonCamera) {
-    UE_LOG(LogRailsChar, Warning,
-           TEXT("FirstPersonCamera is null! It should be created in C++."));
+    // Attach to mesh socket
+    CameraBoom->AttachToComponent(GetMesh(), AttachRules, CameraSocketName);
+
+    // Apply custom offsets
+    CameraBoom->SetRelativeLocation(CameraRelativeLocationOffset);
+    CameraBoom->SetRelativeRotation(CameraRelativeRotationOffset);
+
+    UE_LOG(LogEpochRails, Log,
+           TEXT("Camera boom attached to socket with offset: %s, rotation: %s"),
+           *CameraRelativeLocationOffset.ToString(),
+           *CameraRelativeRotationOffset.ToString());
   } else {
-    UE_LOG(LogRailsChar, Log, TEXT("FirstPersonCamera ready: %s"),
-           *FirstPersonCamera->GetName());
+    UE_LOG(LogEpochRails, Log,
+           TEXT("Camera boom attached to root component (default)"));
   }
 }
 
+void ARailsPlayerCharacter::SetCameraSocket(FName NewSocketName,
+                                            bool bIgnoreRotation) {
+  if (!CameraBoom || !GetMesh()) {
+    UE_LOG(LogEpochRails, Warning,
+           TEXT("Cannot change camera socket: CameraBoom or Mesh is null"));
+    return;
+  }
 
-//==================== SETUP INPUT ====================//
+  CameraSocketName = NewSocketName;
+  bIgnoreSocketRotation = bIgnoreRotation;
+
+  if (NewSocketName.IsNone()) {
+    ResetCameraToDefault();
+    return;
+  }
+
+  UE_LOG(LogEpochRails, Log, TEXT("Changing camera socket to: %s"),
+         *NewSocketName.ToString());
+
+  // Define attachment rules
+  FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget,
+                                        bIgnoreRotation
+                                            ? EAttachmentRule::KeepWorld
+                                            : EAttachmentRule::SnapToTarget,
+                                        EAttachmentRule::KeepWorld, false);
+
+  // Detach and reattach to new socket
+  CameraBoom->DetachFromComponent(
+      FDetachmentTransformRules::KeepWorldTransform);
+  CameraBoom->AttachToComponent(GetMesh(), AttachRules, NewSocketName);
+
+  // Reapply offsets
+  CameraBoom->SetRelativeLocation(CameraRelativeLocationOffset);
+  CameraBoom->SetRelativeRotation(CameraRelativeRotationOffset);
+
+  bAttachCameraToSocket = true;
+
+  UE_LOG(LogEpochRails, Log, TEXT("Camera socket changed successfully"));
+}
+
+void ARailsPlayerCharacter::ResetCameraToDefault() {
+  if (!CameraBoom) {
+    return;
+  }
+
+  UE_LOG(LogEpochRails, Log,
+         TEXT("Resetting camera to default (root component)"));
+
+  FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget,
+                                        EAttachmentRule::KeepWorld,
+                                        EAttachmentRule::KeepWorld, false);
+
+  CameraBoom->DetachFromComponent(
+      FDetachmentTransformRules::KeepWorldTransform);
+  CameraBoom->AttachToComponent(RootComponent, AttachRules);
+  CameraBoom->SetRelativeLocation(FVector::ZeroVector);
+  CameraBoom->SetRelativeRotation(FRotator::ZeroRotator);
+
+  bAttachCameraToSocket = false;
+  CameraSocketName = NAME_None;
+
+  UE_LOG(LogEpochRails, Log, TEXT("Camera reset to default"));
+}
 
 void ARailsPlayerCharacter::SetupPlayerInputComponent(
     UInputComponent *PlayerInputComponent) {
-  Super::SetupPlayerInputComponent(PlayerInputComponent);
-
-  if (UEnhancedInputComponent *EIC =
+  if (UEnhancedInputComponent *EnhancedInputComponent =
           Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
+    // Jumping
+    EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this,
+                                       &ACharacter::Jump);
+    EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed,
+                                       this, &ACharacter::StopJumping);
 
-    // Move
-    if (MoveAction) {
-      EIC->BindAction(MoveAction, ETriggerEvent::Triggered, this,
-                      &ARailsPlayerCharacter::Move);
-    } else {
-      UE_LOG(LogRailsChar, Error, TEXT("MoveAction is null"));
-    }
+    // Moving
+    EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered,
+                                       this, &ARailsPlayerCharacter::Move);
 
-    // Look
-    if (LookAction) {
-      EIC->BindAction(LookAction, ETriggerEvent::Triggered, this,
-                      &ARailsPlayerCharacter::Look);
-    } else {
-      UE_LOG(LogRailsChar, Error, TEXT("LookAction is null"));
-    }
-
-    // Interact
-    if (InteractAction) {
-      EIC->BindAction(InteractAction, ETriggerEvent::Started, this,
-                      &ARailsPlayerCharacter::Interact);
-    } else {
-      UE_LOG(LogRailsChar, Error, TEXT("InteractAction is null"));
-    }
-
-    // Toggle Build Mode
-    if (ToggleBuildModeAction) {
-      EIC->BindAction(ToggleBuildModeAction, ETriggerEvent::Started, this,
-                      &ARailsPlayerCharacter::ToggleBuildMode);
-    } else {
-      UE_LOG(LogRailsChar, Error, TEXT("ToggleBuildModeAction is null"));
-    }
-
-    // Exit Mode
-    if (ExitModeAction) {
-      EIC->BindAction(ExitModeAction, ETriggerEvent::Started, this,
-                      &ARailsPlayerCharacter::ExitCurrentMode);
-    } else {
-      UE_LOG(LogRailsChar, Error, TEXT("ExitModeAction is null"));
-    }
-
-    // Sprint
-    if (SprintAction) {
-      EIC->BindAction(SprintAction, ETriggerEvent::Started, this,
-                      &ARailsPlayerCharacter::StartSprint);
-      EIC->BindAction(SprintAction, ETriggerEvent::Completed, this,
-                      &ARailsPlayerCharacter::StopSprint);
-    } else {
-      UE_LOG(LogRailsChar, Error, TEXT("SprintAction is null"));
-    }
-
-    // Jump
-    if (JumpAction) {
-      EIC->BindAction(JumpAction, ETriggerEvent::Started, this,
-                      &ARailsPlayerCharacter::StartJump);
-      EIC->BindAction(JumpAction, ETriggerEvent::Completed, this,
-                      &ARailsPlayerCharacter::StopJump);
-    } else {
-      UE_LOG(LogRailsChar, Error, TEXT("JumpAction is null"));
-    }
-
+    // Looking
+    EnhancedInputComponent->BindAction(MouseLookAction,
+                                       ETriggerEvent::Triggered, this,
+                                       &ARailsPlayerCharacter::Look);
+    EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered,
+                                       this, &ARailsPlayerCharacter::Look);
   } else {
-    UE_LOG(LogRailsChar, Error,
-           TEXT("Failed to cast to EnhancedInputComponent"));
+    UE_LOG(LogEpochRails, Error,
+           TEXT("'%s' Failed to find an Enhanced Input component!"),
+           *GetNameSafe(this));
   }
 }
-
-//==================== TICK ====================//
-
-void ARailsPlayerCharacter::Tick(float DeltaTime) {
-  Super::Tick(DeltaTime);
-
-  if (CurrentMode == EPlayerMode::Walking) {
-    TraceForInteractable();
-  }
-
-  if (CurrentMode == EPlayerMode::Building) {
-    UpdateBuildPreview();
-  }
-
-  UpdateHeadRotation(DeltaTime);
-
-  //==================== CAMERA SYNC (CRITICAL) ====================//
-  if (CameraArm && FirstPersonCamera) {
-    // Force camera arm to match character EXACTLY, no lag
-    FVector TargetPos = GetActorLocation() + FVector(0, 0, BaseEyeHeight);
-    CameraArm->SetWorldLocation(TargetPos);
-
-    if (APlayerController *PC = Cast<APlayerController>(GetController())) {
-      CameraArm->SetWorldRotation(PC->GetControlRotation());
-    }
-  }
-
-//==================== TRAIN BASE SYSTEM ====================//
-
-if (CurrentTrainInterior) {
-  if (!bTrainSyncInitialized) {
-    bTrainSyncInitialized = true;
-    
-    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement()) {
-      MoveComp->DisableMovement();
-    }
-    
-    UE_LOG(LogRailsChar, Log, TEXT("Entered train, movement disabled"));
-    return;
-  }
-
-  // НЕ СИНХРОНИЗИРУЕМ - просто стоим на месте
-  // Смотрим, дёргается ли персонаж БЕЗ нашего кода
-
-  if (CameraArm && FirstPersonCamera) {
-    FVector TargetCameraPos = GetActorLocation() + FVector(0, 0, BaseEyeHeight);
-    CameraArm->SetWorldLocation(TargetCameraPos);
-
-    if (APlayerController* PC = Cast<APlayerController>(GetController())) {
-      CameraArm->SetWorldRotation(PC->GetControlRotation());
-    }
-  }
-
-} else {
-  if (bTrainSyncInitialized) {
-    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement()) {
-      MoveComp->SetMovementMode(MOVE_Walking);
-    }
-  }
-
-  bTrainSyncInitialized = false;
-}
-
-//==================== MOVEMENT INPUT ====================//
 
 void ARailsPlayerCharacter::Move(const FInputActionValue &Value) {
-  if (CurrentMode != EPlayerMode::Walking) {
-    return;
-  }
-
-  const FVector2D Input2D = Value.Get<FVector2D>();
-  if (!Controller || Input2D.IsNearlyZero()) {
-    return;
-  }
-
-  const FRotator ControlRot(0.f, Controller->GetControlRotation().Yaw, 0.f);
-  const FVector Forward = FRotationMatrix(ControlRot).GetUnitAxis(EAxis::X);
-  const FVector Right = FRotationMatrix(ControlRot).GetUnitAxis(EAxis::Y);
-
-  AddMovementInput(Forward, Input2D.Y);
-  AddMovementInput(Right, Input2D.X);
+  FVector2D MovementVector = Value.Get<FVector2D>();
+  DoMove(MovementVector.X, MovementVector.Y);
 }
 
 void ARailsPlayerCharacter::Look(const FInputActionValue &Value) {
-  const FVector2D Input = Value.Get<FVector2D>();
-  AddControllerYawInput(Input.X);
-  AddControllerPitchInput(Input.Y);
+  FVector2D LookAxisVector = Value.Get<FVector2D>();
+  DoLook(LookAxisVector.X, LookAxisVector.Y);
 }
 
-//==================== SPRINT ====================//
+void ARailsPlayerCharacter::DoMove(float Right, float Forward) {
+  if (GetController() != nullptr) {
+    const FRotator Rotation = GetController()->GetControlRotation();
+    const FRotator YawRotation(0, Rotation.Yaw, 0);
 
-void ARailsPlayerCharacter::StartSprint() {
-  if (CurrentMode != EPlayerMode::Walking) {
-    return;
-  }
+    const FVector ForwardDirection =
+        FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+    const FVector RightDirection =
+        FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
-  bIsSprinting = true;
-  if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-    MoveComp->MaxWalkSpeed = SprintSpeed;
-  }
-  UE_LOG(LogRailsChar, Log, TEXT("Sprint started"));
-}
-
-void ARailsPlayerCharacter::StopSprint() {
-  bIsSprinting = false;
-  if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-    MoveComp->MaxWalkSpeed = WalkSpeed;
-  }
-  UE_LOG(LogRailsChar, Log, TEXT("Sprint stopped"));
-}
-
-//==================== JUMP ====================//
-
-void ARailsPlayerCharacter::StartJump() {
-  if (CurrentMode != EPlayerMode::Walking) {
-    return;
-  }
-
-  Jump();
-  UE_LOG(LogRailsChar, Log, TEXT("Jump started"));
-}
-
-void ARailsPlayerCharacter::StopJump() { StopJumping(); }
-
-//==================== INTERACTION ====================//
-
-void ARailsPlayerCharacter::Interact() {
-  if (!TargetedInteractable.GetInterface()) {
-    UE_LOG(LogRailsChar, Log, TEXT("No interactable target"));
-    return;
-  }
-
-  if (!IInteractableInterface::Execute_CanInteract(
-          TargetedInteractable.GetObject(), GetController())) {
-    UE_LOG(LogRailsChar, Warning, TEXT("Cannot interact with this object"));
-    return;
-  }
-
-  IInteractableInterface::Execute_OnInteract(TargetedInteractable.GetObject(),
-                                             GetController());
-  UE_LOG(LogRailsChar, Log, TEXT("Interacted with: %s"),
-         *TargetedInteractable.GetObject()->GetName());
-}
-
-void ARailsPlayerCharacter::TraceForInteractable() {
-  if (!Controller) {
-    return;
-  }
-
-  TArray<AActor *> IgnoredActors;
-  IgnoredActors.Add(this);
-  FHitResult HitResult;
-
-  const bool bHit = FAimTraceService::TraceFromScreenCenter(
-      GetWorld(), Cast<APlayerController>(Controller), InteractionDistance,
-      InteractionChannel, IgnoredActors, HitResult, false);
-
-  TScriptInterface<IInteractableInterface> NewTarget;
-
-  if (bHit && HitResult.GetActor()) {
-    if (HitResult.GetActor()->Implements<UInteractableInterface>()) {
-      NewTarget.SetObject(HitResult.GetActor());
-      NewTarget.SetInterface(
-          Cast<IInteractableInterface>(HitResult.GetActor()));
-    }
-  }
-
-  if (NewTarget.GetObject() != TargetedInteractable.GetObject()) {
-    if (TargetedInteractable.GetInterface()) {
-      IInteractableInterface::Execute_OnLookAtEnd(
-          TargetedInteractable.GetObject());
-    }
-
-    TargetedInteractable = NewTarget;
-
-    if (TargetedInteractable.GetInterface()) {
-      IInteractableInterface::Execute_OnLookAtStart(
-          TargetedInteractable.GetObject());
-    }
-  }
-
-#if !UE_BUILD_SHIPPING
-  if (bHit) {
-    FColor SphereColor = TargetedInteractable.GetInterface()
-                             ? FColor::Green
-                             : FColor(100, 100, 100, 128);
-    DrawDebugSphere(GetWorld(), HitResult.Location, 10.0f, 8, SphereColor,
-                    false, 0.1f);
-  }
-#endif
-}
-
-//==================== MODE MANAGEMENT ====================//
-
-void ARailsPlayerCharacter::SetPlayerMode(EPlayerMode NewMode) {
-  if (CurrentMode == NewMode) {
-    return;
-  }
-
-  EPlayerMode OldMode = CurrentMode;
-  CurrentMode = NewMode;
-
-  UE_LOG(LogRailsChar, Log, TEXT("Mode changed: %d -> %d"),
-         static_cast<int32>(OldMode), static_cast<int32>(NewMode));
-
-  switch (CurrentMode) {
-  case EPlayerMode::Walking:
-    if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-      MoveComp->SetMovementMode(MOVE_Walking);
-      MoveComp->MaxWalkSpeed = WalkSpeed;
-    }
-    break;
-
-  case EPlayerMode::Driving:
-    if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-      MoveComp->DisableMovement();
-    }
-    break;
-
-  case EPlayerMode::Building:
-    if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-      MoveComp->MaxWalkSpeed = 300.f;
-    }
-    break;
+    AddMovementInput(ForwardDirection, Forward);
+    AddMovementInput(RightDirection, Right);
   }
 }
 
-void ARailsPlayerCharacter::EnterTrainControlMode(ABaseVehicle *Train) {
-  if (!Train) {
-    UE_LOG(LogRailsChar, Warning,
-           TEXT("Cannot enter train control: Train is null"));
-    return;
-  }
-
-  CurrentTrain = Train;
-  SetPlayerMode(EPlayerMode::Driving);
-
-  if (APlayerController *PC = Cast<APlayerController>(GetController())) {
-    PC->bShowMouseCursor = true;
-    PC->SetInputMode(FInputModeGameAndUI());
-  }
-
-  UE_LOG(LogRailsChar, Log, TEXT("Entered train control mode: %s"),
-         *Train->GetName());
-}
-
-void ARailsPlayerCharacter::ExitTrainControlMode() {
-  if (!CurrentTrain) {
-    return;
-  }
-
-  CurrentTrain = nullptr;
-  SetPlayerMode(EPlayerMode::Walking);
-
-  if (APlayerController *PC = Cast<APlayerController>(GetController())) {
-    PC->bShowMouseCursor = false;
-    PC->SetInputMode(FInputModeGameOnly());
-  }
-
-  UE_LOG(LogRailsChar, Log, TEXT("Exited train control mode"));
-}
-
-void ARailsPlayerCharacter::ToggleBuildMode() {
-  if (CurrentMode == EPlayerMode::Building) {
-    ExitCurrentMode();
-  } else {
-    SetPlayerMode(EPlayerMode::Building);
-    UE_LOG(LogRailsChar, Log, TEXT("Entered build mode"));
+void ARailsPlayerCharacter::DoLook(float Yaw, float Pitch) {
+  if (GetController() != nullptr) {
+    AddControllerYawInput(Yaw);
+    AddControllerPitchInput(Pitch);
   }
 }
 
-void ARailsPlayerCharacter::ExitCurrentMode() {
-  switch (CurrentMode) {
-  case EPlayerMode::Driving:
-    ExitTrainControlMode();
-    break;
+void ARailsPlayerCharacter::DoJumpStart() { Jump(); }
 
-  case EPlayerMode::Building:
-    CancelBuildPreview();
-    SetPlayerMode(EPlayerMode::Walking);
-    UE_LOG(LogRailsChar, Log, TEXT("Exited build mode"));
-    break;
-
-  default:
-    break;
-  }
-}
-
-//==================== BUILDING SYSTEM ====================//
-
-void ARailsPlayerCharacter::UpdateBuildPreview() {
-  // TODO: Implementation
-}
-
-void ARailsPlayerCharacter::PlaceBuildObject() {
-  // TODO: Implementation
-}
-
-void ARailsPlayerCharacter::CancelBuildPreview() {
-  if (PreviewObject) {
-    PreviewObject->Destroy();
-    PreviewObject = nullptr;
-  }
-}
-
-//==================== ITEM MANAGEMENT ====================//
-
-void ARailsPlayerCharacter::EquipItem(AActor *Item) {
-  if (!Item) {
-    UE_LOG(LogRailsChar, Warning, TEXT("Cannot equip null item"));
-    return;
-  }
-
-  if (CurrentHeldItem) {
-    UnequipItem();
-  }
-
-  CurrentHeldItem = Item;
-  Item->AttachToComponent(GetMesh(),
-                          FAttachmentTransformRules::SnapToTargetIncludingScale,
-                          TEXT("hand_r"));
-  HandState = EHandState::HoldingTool;
-
-  UE_LOG(LogRailsChar, Log, TEXT("Equipped item: %s"), *Item->GetName());
-}
-
-void ARailsPlayerCharacter::UnequipItem() {
-  if (!CurrentHeldItem) {
-    return;
-  }
-
-  CurrentHeldItem->DetachFromActor(
-      FDetachmentTransformRules::KeepWorldTransform);
-  CurrentHeldItem = nullptr;
-  HandState = EHandState::Empty;
-
-  UE_LOG(LogRailsChar, Log, TEXT("Unequipped item"));
-}
-
-//==================== HEAD ROTATION ====================//
-
-void ARailsPlayerCharacter::UpdateHeadRotation(float DeltaTime) {
-  // Animation Blueprint logic through Control Rig
-}
-
-void ARailsPlayerCharacter::HideHeadForOwner() {
-  if (!GetMesh()) {
-    return;
-  }
-
-  UMaterialInstanceDynamic *HeadMat =
-      GetMesh()->CreateDynamicMaterialInstance(0);
-  if (HeadMat) {
-    // HeadMat->SetScalarParameterValue(TEXT("HideHead"), 1.0f);
-  }
-
-  UE_LOG(LogRailsChar, Log,
-         TEXT("Head hidden for owner (if material configured)"));
-}
-
-//==================== ANIMATION FUNCTIONS ====================//
-
-float ARailsPlayerCharacter::GetMovementSpeed() const {
-  if (const UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-    return MoveComp->Velocity.Size();
-  }
-  return 0.0f;
-}
-
-float ARailsPlayerCharacter::GetNormalizedSpeed() const {
-  if (const UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-    const float CurrentSpeed = MoveComp->Velocity.Size();
-    const float MaxSpeed = MoveComp->MaxWalkSpeed;
-    return MaxSpeed > 0.0f ? FMath::Clamp(CurrentSpeed / MaxSpeed, 0.0f, 1.0f)
-                           : 0.0f;
-  }
-  return 0.0f;
-}
-
-float ARailsPlayerCharacter::GetMovementDirection() const {
-  if (const UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-    if (MoveComp->Velocity.SizeSquared() > 0.0f) {
-      const FVector VelocityNormal = MoveComp->Velocity.GetSafeNormal2D();
-      const FVector ForwardVector = GetActorForwardVector();
-      const FVector RightVector = GetActorRightVector();
-
-      const float ForwardDot =
-          FVector::DotProduct(VelocityNormal, ForwardVector);
-      const float RightDot = FVector::DotProduct(VelocityNormal, RightVector);
-
-      return FMath::Atan2(RightDot, ForwardDot) * (180.0f / PI);
-    }
-  }
-  return 0.0f;
-}
-
-bool ARailsPlayerCharacter::IsMoving() const {
-  if (const UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-    return MoveComp->Velocity.SizeSquared() > 25.0f; // Threshold ~5 units/sec
-  }
-  return false;
-}
-
-bool ARailsPlayerCharacter::IsInAir() const {
-  if (const UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-    return MoveComp->IsFalling();
-  }
-  return false;
-}
-
-float ARailsPlayerCharacter::GetTargetSpeed() const {
-  return bIsSprinting ? SprintSpeed : WalkSpeed;
-}
+void ARailsPlayerCharacter::DoJumpEnd() { StopJumping(); }

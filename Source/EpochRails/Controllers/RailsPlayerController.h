@@ -1,3 +1,5 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -5,106 +7,62 @@
 #include "RailsPlayerController.generated.h"
 
 class UInputMappingContext;
-class UInputAction;
-class ARailsPlayerCharacter;
-class ABaseVehicle;
 class UUserWidget;
 
 /**
- * Контроллер игрока для EpochRails
- * Управляет HUD, режимами игры и взаимодействием
+ * Basic PlayerController class for a third person game
+ * Manages input mappings
  */
-UCLASS()
-class EPOCHRAILS_API ARailsPlayerController : public APlayerController {
+UCLASS(abstract)
+class ARailsPlayerController : public APlayerController {
   GENERATED_BODY()
 
-public:
-  ARailsPlayerController();
-
 protected:
+  /** Input Mapping Contexts */
+  UPROPERTY(EditAnywhere, Category = "Input|Input Mappings")
+  TArray<UInputMappingContext *> DefaultMappingContexts;
+
+  /** Input Mapping Contexts */
+  UPROPERTY(EditAnywhere, Category = "Input|Input Mappings")
+  TArray<UInputMappingContext *> MobileExcludedMappingContexts;
+
+  /** Mobile controls widget to spawn */
+  UPROPERTY(EditAnywhere, Category = "Input|Touch Controls")
+  TSubclassOf<UUserWidget> MobileControlsWidgetClass;
+
+  /** Pointer to the mobile controls widget */
+  UPROPERTY()
+  TObjectPtr<UUserWidget> MobileControlsWidget;
+
+  /** If true, the player will use UMG touch controls even if not playing on
+   * mobile platforms */
+  UPROPERTY(EditAnywhere, Config, Category = "Input|Touch Controls")
+  bool bForceTouchControls = false;
+
+  /** Gameplay initialization */
   virtual void BeginPlay() override;
-  virtual void Tick(float DeltaSeconds) override;
+
+  /** Input mapping context setup */
   virtual void SetupInputComponent() override;
 
-private:
-  // ========== Input Mapping Context ==========
+  /** Called after possession */
+  virtual void OnPossess(APawn *InPawn) override;
 
-  UPROPERTY(EditDefaultsOnly, Category = "Input")
-  UInputMappingContext *DefaultMappingContext;
+  /** Returns true if the player should use UMG touch controls */
+  bool ShouldUseTouchControls() const;
 
-  UPROPERTY(EditAnywhere, Category = "Input")
-  int32 MappingPriority = 0;
+  /** Bind all input actions from mapping contexts automatically */
+  void BindInputActions();
 
-  // ========== HUD ==========
+  /** Movement input handler */
+  UFUNCTION()
+  void Move(const FInputActionValue &Value);
 
-  UPROPERTY(EditDefaultsOnly, Category = "UI")
-  TSubclassOf<UUserWidget> MainHUDClass;
+  /** Look input handler */
+  UFUNCTION()
+  void Look(const FInputActionValue &Value);
 
-  UPROPERTY(Transient)
-  UUserWidget *MainHUD = nullptr;
-
-  UPROPERTY(EditDefaultsOnly, Category = "UI")
-  TSubclassOf<UUserWidget> TrainControlHUDClass;
-
-  UPROPERTY(Transient)
-  UUserWidget *TrainControlHUD = nullptr;
-
-  // ========== Current State ==========
-
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State",
-            meta = (AllowPrivateAccess = "true"))
-  bool bInTrainControlMode = false;
-
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State",
-            meta = (AllowPrivateAccess = "true"))
-  bool bInBuildMode = false;
-
-public:
-  // ========== HUD Management ==========
-
-  UFUNCTION(BlueprintCallable, Category = "UI")
-  void ShowMainHUD();
-
-  UFUNCTION(BlueprintCallable, Category = "UI")
-  void HideMainHUD();
-
-  UFUNCTION(BlueprintCallable, Category = "UI")
-  void ShowTrainControlHUD();
-
-  UFUNCTION(BlueprintCallable, Category = "UI")
-  void HideTrainControlHUD();
-
-  UFUNCTION(BlueprintPure, Category = "UI")
-  UUserWidget *GetMainHUD() const { return MainHUD; }
-
-  UFUNCTION(BlueprintPure, Category = "UI")
-  UUserWidget *GetTrainControlHUD() const { return TrainControlHUD; }
-
-  // ========== Mode Management ==========
-
-  UFUNCTION(BlueprintCallable, Category = "Mode")
-  void EnterTrainControlMode(ABaseVehicle *Train);
-
-  UFUNCTION(BlueprintCallable, Category = "Mode")
-  void ExitTrainControlMode();
-
-  UFUNCTION(BlueprintCallable, Category = "Mode")
-  void EnterBuildMode();
-
-  UFUNCTION(BlueprintCallable, Category = "Mode")
-  void ExitBuildMode();
-
-  UFUNCTION(BlueprintPure, Category = "Mode")
-  bool IsInTrainControlMode() const { return bInTrainControlMode; }
-
-  UFUNCTION(BlueprintPure, Category = "Mode")
-  bool IsInBuildMode() const { return bInBuildMode; }
-
-  // ========== Getters ==========
-
-  UFUNCTION(BlueprintPure, Category = "Character")
-  ARailsPlayerCharacter *GetRailsCharacter() const;
-
-private:
-  void AddDefaultIMC();
+  /** Jump input handler */
+  UFUNCTION()
+  void Jump(const FInputActionValue &Value);
 };

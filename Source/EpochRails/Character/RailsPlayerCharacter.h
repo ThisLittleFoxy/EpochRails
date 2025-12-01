@@ -4,232 +4,119 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-#include "InputActionValue.h"
+#include "Logging/LogMacros.h"
 #include "RailsPlayerCharacter.generated.h"
 
-class UCameraComponent;
 class USpringArmComponent;
-class UInputMappingContext;
+class UCameraComponent;
 class UInputAction;
-class ABaseVehicle;
-class IInteractableInterface;
+struct FInputActionValue;
 
-// Hand state enum
-UENUM(BlueprintType)
-enum class EHandState : uint8 {
-  Empty UMETA(DisplayName = "Empty"),
-  HoldingTool UMETA(DisplayName = "Holding Tool"),
-  HoldingWeapon UMETA(DisplayName = "Holding Weapon"),
-  HoldingItem UMETA(DisplayName = "Holding Item")
-};
+DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
-// Player mode enum
-UENUM(BlueprintType)
-enum class EPlayerMode : uint8 {
-  Walking UMETA(DisplayName = "Walking"),
-  Driving UMETA(DisplayName = "Driving"),
-  Building UMETA(DisplayName = "Building")
-};
+/**
+ * A simple player-controllable third person character
+ * Implements a controllable orbiting camera
+ */
+UCLASS(abstract)
+class ARailsPlayerCharacter : public ACharacter {
+    GENERATED_BODY()
 
-UCLASS()
-class EPOCHRAILS_API ARailsPlayerCharacter : public ACharacter {
-  GENERATED_BODY()
+    /** Camera boom positioning the camera behind the character */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+    USpringArmComponent* CameraBoom;
 
-public:
-  ARailsPlayerCharacter();
+    /** Follow camera */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+    UCameraComponent* FollowCamera;
 
 protected:
-  virtual void BeginPlay() override;
-  virtual void SetupPlayerInputComponent(
-      class UInputComponent *PlayerInputComponent) override;
+    /** Socket name to attach camera boom to. Leave empty to attach to root component */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+    FName CameraSocketName;
+
+    /** If true, camera boom will attach to mesh socket instead of root component */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+    bool bAttachCameraToSocket = false;
+
+    /** Custom relative location offset for camera boom when attached to socket */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+    FVector CameraRelativeLocationOffset = FVector::ZeroVector;
+
+    /** Custom relative rotation offset for camera boom when attached to socket */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+    FRotator CameraRelativeRotationOffset = FRotator::ZeroRotator;
+
+    /** If true, camera boom ignores socket rotation and uses world/pawn rotation instead */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+    bool bIgnoreSocketRotation = true;
+
+    /** Jump Input Action */
+    UPROPERTY(EditAnywhere, Category = "Input")
+    UInputAction* JumpAction;
+
+    /** Move Input Action */
+    UPROPERTY(EditAnywhere, Category = "Input")
+    UInputAction* MoveAction;
+
+    /** Look Input Action */
+    UPROPERTY(EditAnywhere, Category = "Input")
+    UInputAction* LookAction;
+
+    /** Mouse Look Input Action */
+    UPROPERTY(EditAnywhere, Category = "Input")
+    UInputAction* MouseLookAction;
 
 public:
-  virtual void Tick(float DeltaTime) override;
-
-  //==================== COMPONENTS ====================//
-
-  // Spring arm for camera smoothing and stability
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera",
-            meta = (AllowPrivateAccess = "true"))
-  USpringArmComponent *CameraArm;
-
-  // First person camera - created in C++ but configurable in Blueprint
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera",
-            meta = (AllowPrivateAccess = "true"))
-  UCameraComponent *FirstPersonCamera;
-
-  //==================== INPUT ====================//
-
-  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-  UInputMappingContext *DefaultMappingContext;
-
-  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-  UInputAction *MoveAction;
-
-  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-  UInputAction *LookAction;
-
-  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-  UInputAction *InteractAction;
-
-  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-  UInputAction *ToggleBuildModeAction;
-
-  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-  UInputAction *ExitModeAction;
-
-  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-  UInputAction *SprintAction;
-
-  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-  UInputAction *JumpAction;
-
-  //==================== MOVEMENT ====================//
-
-  UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Movement")
-  float WalkSpeed = 200.0f;
-
-  UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Movement")
-  float SprintSpeed = 400.0f;
-
-  UPROPERTY(BlueprintReadOnly, Category = "Movement")
-  bool bIsSprinting;
-
-  //==================== INTERACTION ====================//
-
-  UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Interaction")
-  float InteractionDistance = 500.0f;
-
-  UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Interaction")
-  TEnumAsByte<ECollisionChannel> InteractionChannel = ECC_Visibility;
-
-  UPROPERTY(BlueprintReadOnly, Category = "Interaction")
-  TScriptInterface<IInteractableInterface> TargetedInteractable;
-
-  //==================== CAMERA ====================//
-
-  // Socket name to attach camera to (for animation support outside train)
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-  FName CameraSocketName = TEXT("head");
-
-  // Camera offset from socket (used when camera is attached back to mesh)
-  UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera")
-  FVector CameraRelativeLocation = FVector(15.0f, 0.0f, 0.0f);
-
-  // Camera rotation offset from socket
-  UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera")
-  FRotator CameraRelativeRotation = FRotator::ZeroRotator;
-
-  // Legacy - keep for backward compatibility
-  UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Camera")
-  float CameraForwardOffset = 15.0f;
-
-  //==================== HAND STATE ====================//
-
-  UPROPERTY(BlueprintReadOnly, Category = "Character")
-  EHandState HandState;
-
-  UPROPERTY(BlueprintReadOnly, Category = "Character")
-  AActor *CurrentHeldItem;
-
-  //==================== PLAYER MODE ====================//
-
-  UPROPERTY(BlueprintReadOnly, Category = "Character")
-  EPlayerMode CurrentMode;
-
-  UPROPERTY(BlueprintReadOnly, Category = "Character")
-  ABaseVehicle *CurrentTrain;
-
-  //==================== TRAIN MOVEMENT SYNC ====================//
-
-  // Reference to train interior player is currently inside (for walking mode)
-  UPROPERTY(BlueprintReadWrite, Category = "Train")
-  ABaseVehicle *CurrentTrainInterior;
-
-  //==================== BUILDING ====================//
-
-  UPROPERTY(BlueprintReadOnly, Category = "Building")
-  AActor *PreviewObject;
-
-  //==================== INPUT FUNCTIONS ====================//
+    /** Constructor */
+    ARailsPlayerCharacter();
 
 protected:
-  void Move(const FInputActionValue &Value);
-  void Look(const FInputActionValue &Value);
-  void Interact();
-  void StartSprint();
-  void StopSprint();
-  void StartJump();
-  void StopJump();
+    /** Called when the game starts or when spawned */
+    virtual void BeginPlay() override;
 
-  //==================== INTERACTION FUNCTIONS ====================//
+    /** Initialize input action bindings */
+    virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-  void TraceForInteractable();
+    /** Setup camera attachment based on settings */
+    virtual void SetupCameraAttachment();
 
-  //==================== MODE MANAGEMENT ====================//
+protected:
+    /** Called for movement input */
+    void Move(const FInputActionValue& Value);
+
+    /** Called for looking input */
+    void Look(const FInputActionValue& Value);
 
 public:
-  UFUNCTION(BlueprintCallable, Category = "Character")
-  void SetPlayerMode(EPlayerMode NewMode);
+    /** Dynamically change camera socket at runtime */
+    UFUNCTION(BlueprintCallable, Category = "Camera")
+    void SetCameraSocket(FName NewSocketName, bool bIgnoreRotation = true);
 
-  UFUNCTION(BlueprintCallable, Category = "Character")
-  void EnterTrainControlMode(ABaseVehicle *Train);
+    /** Reset camera to default attachment (root component) */
+    UFUNCTION(BlueprintCallable, Category = "Camera")
+    void ResetCameraToDefault();
 
-  UFUNCTION(BlueprintCallable, Category = "Character")
-  void ExitTrainControlMode();
+    /** Handles move inputs from either controls or UI interfaces */
+    UFUNCTION(BlueprintCallable, Category = "Input")
+    virtual void DoMove(float Right, float Forward);
 
-  void ToggleBuildMode();
-  void ExitCurrentMode();
+    /** Handles look inputs from either controls or UI interfaces */
+    UFUNCTION(BlueprintCallable, Category = "Input")
+    virtual void DoLook(float Yaw, float Pitch);
 
-  //==================== BUILDING FUNCTIONS ====================//
+    /** Handles jump pressed inputs from either controls or UI interfaces */
+    UFUNCTION(BlueprintCallable, Category = "Input")
+    virtual void DoJumpStart();
 
-  void UpdateBuildPreview();
-  void PlaceBuildObject();
-  void CancelBuildPreview();
+    /** Handles jump pressed inputs from either controls or UI interfaces */
+    UFUNCTION(BlueprintCallable, Category = "Input")
+    virtual void DoJumpEnd();
 
-  //==================== ITEM MANAGEMENT ====================//
-
-  UFUNCTION(BlueprintCallable, Category = "Character")
-  void EquipItem(AActor *Item);
-
-  UFUNCTION(BlueprintCallable, Category = "Character")
-  void UnequipItem();
-
-  //==================== HEAD ROTATION ====================//
-
-  void UpdateHeadRotation(float DeltaTime);
-  void HideHeadForOwner();
-
-  //==================== ANIMATION ====================//
-
-  // Get current movement speed
-  UFUNCTION(BlueprintPure, Category = "Animation")
-  float GetMovementSpeed() const;
-
-  // Get normalized speed (0-1 range for walk-to-sprint)
-  UFUNCTION(BlueprintPure, Category = "Animation")
-  float GetNormalizedSpeed() const;
-
-  // Get movement direction relative to character
-  UFUNCTION(BlueprintPure, Category = "Animation")
-  float GetMovementDirection() const;
-
-  // Check if character is moving
-  UFUNCTION(BlueprintPure, Category = "Animation")
-  bool IsMoving() const;
-
-  // Check if character is in air
-  UFUNCTION(BlueprintPure, Category = "Animation")
-  bool IsInAir() const;
-
-  // Get current target speed (walk or sprint)
-  UFUNCTION(BlueprintPure, Category = "Animation")
-  float GetTargetSpeed() const;
-
-  //==================== PRIVATE ====================//
-
-private:
-  // Manual train synchronization variables (used together with SetBase)
-  FVector LastTrainLocation;
-  bool bTrainSyncInitialized;
+public:
+    /** Returns CameraBoom subobject **/
+    FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
+    
+    /** Returns FollowCamera subobject **/
+    FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 };
