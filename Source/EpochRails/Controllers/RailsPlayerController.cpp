@@ -179,25 +179,25 @@ void ARailsPlayerController::BindInputActions() {
     }
   }
 
-  UE_LOG(LogEpochRails, Log, TEXT("Total actions bound: %d"),
+  UE_LOG(LogEpochRails, Verbose, TEXT("Total actions bound: %d"),
          BoundActions.Num());
 }
 
 void ARailsPlayerController::OnPossess(APawn *InPawn) {
   Super::OnPossess(InPawn);
 
-  UE_LOG(LogEpochRails, Log,
+  UE_LOG(LogEpochRails, Verbose,
          TEXT("RailsPlayerController::OnPossess - Pawn: %s"),
          InPawn ? *InPawn->GetName() : TEXT("NULL"));
 
   if (InPawn) {
     ACharacter *PossessedCharacter = Cast<ACharacter>(InPawn);
     if (PossessedCharacter) {
-      UE_LOG(LogEpochRails, Log, TEXT("Possessed Character: %s"),
+      UE_LOG(LogEpochRails, Verbose, TEXT("Possessed Character: %s"),
              *PossessedCharacter->GetName());
       if (UCharacterMovementComponent *MovementComp =
               PossessedCharacter->GetCharacterMovement()) {
-        UE_LOG(LogEpochRails, Log,
+        UE_LOG(LogEpochRails, Verbose,
                TEXT("CharacterMovementComponent found, MovementMode: %d"),
                (int32)MovementComp->MovementMode);
       } else {
@@ -217,12 +217,12 @@ bool ARailsPlayerController::ShouldUseTouchControls() const {
 }
 
 void ARailsPlayerController::Move(const FInputActionValue &Value) {
-  UE_LOG(LogEpochRails, Log, TEXT("Move called! Value: %s, Magnitude: %f"),
+  UE_LOG(LogEpochRails, Verbose, TEXT("Move called! Value: %s, Magnitude: %f"),
          *Value.ToString(), Value.GetMagnitude());
 
   // Get movement vector from input
   const FVector2D MovementVector = Value.Get<FVector2D>();
-  UE_LOG(LogEpochRails, Log, TEXT("MovementVector: X=%f, Y=%f"),
+  UE_LOG(LogEpochRails, Verbose, TEXT("MovementVector: X=%f, Y=%f"),
          MovementVector.X, MovementVector.Y);
 
   APawn *ControlledPawn = GetPawn();
@@ -231,7 +231,7 @@ void ARailsPlayerController::Move(const FInputActionValue &Value) {
     return;
   }
 
-  UE_LOG(LogEpochRails, Log, TEXT("Controlled Pawn: %s"),
+  UE_LOG(LogEpochRails, Verbose, TEXT("Controlled Pawn: %s"),
          *ControlledPawn->GetName());
 
   // Get forward and right vectors
@@ -243,23 +243,24 @@ void ARailsPlayerController::Move(const FInputActionValue &Value) {
   const FVector RightDirection =
       FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
-  UE_LOG(LogEpochRails, Log, TEXT("ForwardDirection: %s, RightDirection: %s"),
+  UE_LOG(LogEpochRails, Verbose,
+         TEXT("ForwardDirection: %s, RightDirection: %s"),
          *ForwardDirection.ToString(), *RightDirection.ToString());
 
   // Add movement input
   ControlledPawn->AddMovementInput(ForwardDirection, MovementVector.Y);
   ControlledPawn->AddMovementInput(RightDirection, MovementVector.X);
 
-  UE_LOG(LogEpochRails, Log, TEXT("AddMovementInput called"));
+  UE_LOG(LogEpochRails, Verbose, TEXT("AddMovementInput called"));
 }
 
 void ARailsPlayerController::Look(const FInputActionValue &Value) {
-  UE_LOG(LogEpochRails, Log, TEXT("Look called! Value: %s, Magnitude: %f"),
+  UE_LOG(LogEpochRails, Verbose, TEXT("Look called! Value: %s, Magnitude: %f"),
          *Value.ToString(), Value.GetMagnitude());
 
   // Get look axis vector
   const FVector2D LookAxisVector = Value.Get<FVector2D>();
-  UE_LOG(LogEpochRails, Log, TEXT("LookAxisVector: X=%f, Y=%f"),
+  UE_LOG(LogEpochRails, Verbose, TEXT("LookAxisVector: X=%f, Y=%f"),
          LookAxisVector.X, LookAxisVector.Y);
 
   // Add yaw and pitch input
@@ -268,7 +269,8 @@ void ARailsPlayerController::Look(const FInputActionValue &Value) {
 }
 
 void ARailsPlayerController::Jump(const FInputActionValue &Value) {
-  UE_LOG(LogEpochRails, Log, TEXT("Jump called! Value: %s"), *Value.ToString());
+  UE_LOG(LogEpochRails, Verbose, TEXT("Jump called! Value: %s"),
+         *Value.ToString());
 
   if (ACharacter *ControlledCharacter = Cast<ACharacter>(GetPawn())) {
     ControlledCharacter->Jump();

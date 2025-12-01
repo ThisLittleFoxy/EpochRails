@@ -20,103 +20,179 @@ DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
  */
 UCLASS(abstract)
 class ARailsPlayerCharacter : public ACharacter {
-    GENERATED_BODY()
+  GENERATED_BODY()
 
-    /** Camera boom positioning the camera behind the character */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-    USpringArmComponent* CameraBoom;
+  /** Camera boom positioning the camera behind the character */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components",
+            meta = (AllowPrivateAccess = "true"))
+  USpringArmComponent *CameraBoom;
 
-    /** Follow camera */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-    UCameraComponent* FollowCamera;
-
-protected:
-    /** Socket name to attach camera boom to. Leave empty to attach to root component */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-    FName CameraSocketName;
-
-    /** If true, camera boom will attach to mesh socket instead of root component */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-    bool bAttachCameraToSocket = false;
-
-    /** Custom relative location offset for camera boom when attached to socket */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-    FVector CameraRelativeLocationOffset = FVector::ZeroVector;
-
-    /** Custom relative rotation offset for camera boom when attached to socket */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-    FRotator CameraRelativeRotationOffset = FRotator::ZeroRotator;
-
-    /** If true, camera boom ignores socket rotation and uses world/pawn rotation instead */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-    bool bIgnoreSocketRotation = true;
-
-    /** Jump Input Action */
-    UPROPERTY(EditAnywhere, Category = "Input")
-    UInputAction* JumpAction;
-
-    /** Move Input Action */
-    UPROPERTY(EditAnywhere, Category = "Input")
-    UInputAction* MoveAction;
-
-    /** Look Input Action */
-    UPROPERTY(EditAnywhere, Category = "Input")
-    UInputAction* LookAction;
-
-    /** Mouse Look Input Action */
-    UPROPERTY(EditAnywhere, Category = "Input")
-    UInputAction* MouseLookAction;
-
-public:
-    /** Constructor */
-    ARailsPlayerCharacter();
+  /** Follow camera */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components",
+            meta = (AllowPrivateAccess = "true"))
+  UCameraComponent *FollowCamera;
 
 protected:
-    /** Called when the game starts or when spawned */
-    virtual void BeginPlay() override;
+  // ========== Camera Settings ==========
 
-    /** Initialize input action bindings */
-    virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+  /** Socket name to attach camera boom to. Leave empty to attach to root
+   * component */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+  FName CameraSocketName;
 
-    /** Setup camera attachment based on settings */
-    virtual void SetupCameraAttachment();
+  /** If true, camera boom will attach to mesh socket instead of root component
+   */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+  bool bAttachCameraToSocket = false;
+
+  /** Custom relative location offset for camera boom when attached to socket */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+  FVector CameraRelativeLocationOffset = FVector::ZeroVector;
+
+  /** Custom relative rotation offset for camera boom when attached to socket */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+  FRotator CameraRelativeRotationOffset = FRotator::ZeroRotator;
+
+  /** If true, camera boom ignores socket rotation and uses world/pawn rotation
+   * instead */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+  bool bIgnoreSocketRotation = true;
+
+  // ========== Movement Settings ==========
+
+  /** Normal walking speed */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Sprint")
+  float WalkSpeed = 500.0f;
+
+  /** Sprint speed */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Sprint")
+  float SprintSpeed = 800.0f;
+
+  /** Is the character currently sprinting? (for Animation Blueprint) */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Sprint")
+  bool bIsSprinting = false;
+
+  /** Current speed of the character (for Animation Blueprint) */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
+  float CurrentSpeed = 0.0f;
+
+  /** Current movement direction (for Animation Blueprint) */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
+  float MovementDirection = 0.0f;
+
+  /** Is the character in the air? (for Animation Blueprint) */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
+  bool bIsInAir = false;
+
+  // ========== Input Actions ==========
+
+  /** Jump Input Action */
+  UPROPERTY(EditAnywhere, Category = "Input")
+  UInputAction *JumpAction;
+
+  /** Move Input Action */
+  UPROPERTY(EditAnywhere, Category = "Input")
+  UInputAction *MoveAction;
+
+  /** Look Input Action */
+  UPROPERTY(EditAnywhere, Category = "Input")
+  UInputAction *LookAction;
+
+  /** Mouse Look Input Action */
+  UPROPERTY(EditAnywhere, Category = "Input")
+  UInputAction *MouseLookAction;
+
+  /** Sprint Input Action */
+  UPROPERTY(EditAnywhere, Category = "Input")
+  UInputAction *SprintAction;
+
+public:
+  /** Constructor */
+  ARailsPlayerCharacter();
 
 protected:
-    /** Called for movement input */
-    void Move(const FInputActionValue& Value);
+  /** Called when the game starts or when spawned */
+  virtual void BeginPlay() override;
 
-    /** Called for looking input */
-    void Look(const FInputActionValue& Value);
+  /** Called every frame */
+  virtual void Tick(float DeltaTime) override;
 
-public:
-    /** Dynamically change camera socket at runtime */
-    UFUNCTION(BlueprintCallable, Category = "Camera")
-    void SetCameraSocket(FName NewSocketName, bool bIgnoreRotation = true);
+  /** Initialize input action bindings */
+  virtual void SetupPlayerInputComponent(
+      class UInputComponent *PlayerInputComponent) override;
 
-    /** Reset camera to default attachment (root component) */
-    UFUNCTION(BlueprintCallable, Category = "Camera")
-    void ResetCameraToDefault();
+  /** Setup camera attachment based on settings */
+  virtual void SetupCameraAttachment();
 
-    /** Handles move inputs from either controls or UI interfaces */
-    UFUNCTION(BlueprintCallable, Category = "Input")
-    virtual void DoMove(float Right, float Forward);
+  /** Update animation variables */
+  virtual void UpdateAnimationVariables();
 
-    /** Handles look inputs from either controls or UI interfaces */
-    UFUNCTION(BlueprintCallable, Category = "Input")
-    virtual void DoLook(float Yaw, float Pitch);
+protected:
+  /** Called for movement input */
+  void Move(const FInputActionValue &Value);
 
-    /** Handles jump pressed inputs from either controls or UI interfaces */
-    UFUNCTION(BlueprintCallable, Category = "Input")
-    virtual void DoJumpStart();
+  /** Called for looking input */
+  void Look(const FInputActionValue &Value);
 
-    /** Handles jump pressed inputs from either controls or UI interfaces */
-    UFUNCTION(BlueprintCallable, Category = "Input")
-    virtual void DoJumpEnd();
+  /** Called when sprint is started */
+  void StartSprint(const FInputActionValue &Value);
+
+  /** Called when sprint is stopped */
+  void StopSprint(const FInputActionValue &Value);
 
 public:
-    /** Returns CameraBoom subobject **/
-    FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
-    
-    /** Returns FollowCamera subobject **/
-    FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+  /** Dynamically change camera socket at runtime */
+  UFUNCTION(BlueprintCallable, Category = "Camera")
+  void SetCameraSocket(FName NewSocketName, bool bIgnoreRotation = true);
+
+  /** Reset camera to default attachment (root component) */
+  UFUNCTION(BlueprintCallable, Category = "Camera")
+  void ResetCameraToDefault();
+
+  /** Start sprinting */
+  UFUNCTION(BlueprintCallable, Category = "Movement")
+  void DoStartSprint();
+
+  /** Stop sprinting */
+  UFUNCTION(BlueprintCallable, Category = "Movement")
+  void DoStopSprint();
+
+  /** Handles move inputs from either controls or UI interfaces */
+  UFUNCTION(BlueprintCallable, Category = "Input")
+  virtual void DoMove(float Right, float Forward);
+
+  /** Handles look inputs from either controls or UI interfaces */
+  UFUNCTION(BlueprintCallable, Category = "Input")
+  virtual void DoLook(float Yaw, float Pitch);
+
+  /** Handles jump pressed inputs from either controls or UI interfaces */
+  UFUNCTION(BlueprintCallable, Category = "Input")
+  virtual void DoJumpStart();
+
+  /** Handles jump pressed inputs from either controls or UI interfaces */
+  UFUNCTION(BlueprintCallable, Category = "Input")
+  virtual void DoJumpEnd();
+
+public:
+  /** Returns CameraBoom subobject **/
+  FORCEINLINE class USpringArmComponent *GetCameraBoom() const {
+    return CameraBoom;
+  }
+
+  /** Returns FollowCamera subobject **/
+  FORCEINLINE class UCameraComponent *GetFollowCamera() const {
+    return FollowCamera;
+  }
+
+  /** Returns whether character is sprinting */
+  FORCEINLINE bool IsSprinting() const { return bIsSprinting; }
+
+  /** Returns current speed */
+  FORCEINLINE float GetCurrentSpeed() const { return CurrentSpeed; }
+
+  /** Returns movement direction */
+  FORCEINLINE float GetMovementDirection() const { return MovementDirection; }
+
+  /** Returns whether character is in air */
+  FORCEINLINE bool IsInAir() const { return bIsInAir; }
 };

@@ -11,8 +11,12 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "InputActionValue.h"
+#include "Kismet/KismetMathLibrary.h"
 
 ARailsPlayerCharacter::ARailsPlayerCharacter() {
+  // Set this character to call Tick() every frame
+  PrimaryActorTick.bCanEverTick = true;
+
   // Set size for collision capsule
   GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 
@@ -26,7 +30,7 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
   GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
   GetCharacterMovement()->JumpZVelocity = 500.f;
   GetCharacterMovement()->AirControl = 0.35f;
-  GetCharacterMovement()->MaxWalkSpeed = 500.f;
+  GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
   GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
   GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
   GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
@@ -48,6 +52,42 @@ void ARailsPlayerCharacter::BeginPlay() {
 
   // Setup camera attachment based on configuration
   SetupCameraAttachment();
+
+  // Initialize movement speed
+  if (UCharacterMovementComponent *MovementComp = GetCharacterMovement()) {
+    MovementComp->MaxWalkSpeed = WalkSpeed;
+  }
+}
+
+void ARailsPlayerCharacter::Tick(float DeltaTime) {
+  Super::Tick(DeltaTime);
+
+  // Update animation variables every frame
+  UpdateAnimationVariables();
+}
+
+void ARailsPlayerCharacter::UpdateAnimationVariables() {
+  if (UCharacterMovementComponent *MovementComp = GetCharacterMovement()) {
+    // Calculate current speed
+    FVector Velocity = GetVelocity();
+    Velocity.Z = 0.0f;
+    CurrentSpeed = Velocity.Size();
+
+    // Check if in air
+    bIsInAir = MovementComp->IsFalling();
+
+    // Calculate movement direction relative to actor rotation
+    if (CurrentSpeed > 0.0f) {
+      FRotator VelocityRotation = Velocity.Rotation();
+      FRotator ActorRotation = GetActorRotation();
+      float DeltaAngle = VelocityRotation.Yaw - ActorRotation.Yaw;
+
+      // Normalize angle to -180 to 180 range
+      MovementDirection = FMath::UnwindDegrees(DeltaAngle);
+    } else {
+      MovementDirection = 0.0f;
+    }
+  }
 }
 
 void ARailsPlayerCharacter::SetupCameraAttachment() {
@@ -61,12 +101,11 @@ void ARailsPlayerCharacter::SetupCameraAttachment() {
            *CameraSocketName.ToString());
 
     // Define attachment rules
-    FAttachmentTransformRules AttachRules(
-        EAttachmentRule::SnapToTarget, // Location snaps to socket
-        bIgnoreSocketRotation ? EAttachmentRule::KeepWorld
-                              : EAttachmentRule::SnapToTarget, // Rotation
-        EAttachmentRule::KeepWorld,                            // Scale
-        false);
+    FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget,
+                                          bIgnoreSocketRotation
+                                              ? EAttachmentRule::KeepWorld
+                                              : EAttachmentRule::SnapToTarget,
+                                          EAttachmentRule::KeepWorld, false);
 
     // Attach to mesh socket
     CameraBoom->AttachToComponent(GetMesh(), AttachRules, CameraSocketName);
@@ -104,19 +143,15 @@ void ARailsPlayerCharacter::SetCameraSocket(FName NewSocketName,
   UE_LOG(LogEpochRails, Log, TEXT("Changing camera socket to: %s"),
          *NewSocketName.ToString());
 
-  // Define attachment rules
   FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget,
                                         bIgnoreRotation
                                             ? EAttachmentRule::KeepWorld
                                             : EAttachmentRule::SnapToTarget,
                                         EAttachmentRule::KeepWorld, false);
 
-  // Detach and reattach to new socket
   CameraBoom->DetachFromComponent(
       FDetachmentTransformRules::KeepWorldTransform);
   CameraBoom->AttachToComponent(GetMesh(), AttachRules, NewSocketName);
-
-  // Reapply offsets
   CameraBoom->SetRelativeLocation(CameraRelativeLocationOffset);
   CameraBoom->SetRelativeRotation(CameraRelativeRotationOffset);
 
@@ -169,10 +204,48 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
                                        &ARailsPlayerCharacter::Look);
     EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered,
                                        this, &ARailsPlayerCharacter::Look);
+
+    // Sprinting
+    if (SprintAction) {
+      EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started,
+                                         this,
+                                         &ARailsPlayerCharacter::StartSprint);
+      EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed,
+                                         this,
+                                         &ARailsPlayerCharacter::StopSprint);
+      UE_LOG(LogEpochRails, Log, TEXT("Sprint action bound successfully"));
+    } else {
+      UE_LOG(LogEpochRails, Warning,
+             TEXT("SprintAction is NULL! Please assign it in Blueprint."));
+    }
   } else {
     UE_LOG(LogEpochRails, Error,
            TEXT("'%s' Failed to find an Enhanced Input component!"),
            *GetNameSafe(this));
+  }
+}
+
+void ARailsPlayerCharacter::StartSprint(const FInputActionValue &Value) {
+  DoStartSprint();
+}
+
+void ARailsPlayerCharacter::StopSprint(const FInputActionValue &Value) {
+  DoStopSprint();
+}
+
+void ARailsPlayerCharacter::DoStartSprint() {
+  if (UCharacterMovementComponent *MovementComp = GetCharacterMovement()) {
+    bIsSprinting = true;
+    MovementComp->MaxWalkSpeed = SprintSpeed;
+    UE_LOG(LogEpochRails, Log, TEXT("Sprint started - Speed: %f"), SprintSpeed);
+  }
+}
+
+void ARailsPlayerCharacter::DoStopSprint() {
+  if (UCharacterMovementComponent *MovementComp = GetCharacterMovement()) {
+    bIsSprinting = false;
+    MovementComp->MaxWalkSpeed = WalkSpeed;
+    UE_LOG(LogEpochRails, Log, TEXT("Sprint stopped - Speed: %f"), WalkSpeed);
   }
 }
 
