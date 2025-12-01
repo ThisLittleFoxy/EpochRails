@@ -47,25 +47,28 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
 // ========== Camera & Spring Arm Setup ==========
   CameraArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraArm"));
   CameraArm->SetupAttachment(GetCapsuleComponent());
-  CameraArm->TargetArmLength = 0.0f;         // First person: no distance
-  CameraArm->bUsePawnControlRotation = true; // Rotate arm with controller
-  CameraArm->bDoCollisionTest = false;       // No camera collision
-  CameraArm->bEnableCameraLag = true;        // Enable smoothing
-  CameraArm->CameraLagSpeed = 20.0f;         // Tune as needed
-  CameraArm->CameraLagMaxDistance = 0.0f;    // No extra stretch
+  CameraArm->TargetArmLength = 0.0f;
+  CameraArm->bUsePawnControlRotation = true;
+  CameraArm->bDoCollisionTest = false;
+  CameraArm->bEnableCameraLag = true;
+  CameraArm->CameraLagSpeed = 20.0f;
+  CameraArm->CameraLagMaxDistance = 0.0f;
+  // ДОБАВЬ ЭТО:
+  CameraArm->PrimaryComponentTick.TickGroup =
+      TG_PostPhysics; // Tick AFTER physics
 
   FirstPersonCamera =
       CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
-
-  // CRITICAL: Attach to CameraArm, NOT to Mesh
   FirstPersonCamera->SetupAttachment(CameraArm,
                                      USpringArmComponent::SocketName);
   FirstPersonCamera->SetRelativeLocation(FVector::ZeroVector);
   FirstPersonCamera->SetRelativeRotation(FRotator::ZeroRotator);
-
-  FirstPersonCamera->bUsePawnControlRotation = false; // Rotation handled by arm
+  FirstPersonCamera->bUsePawnControlRotation = false;
   FirstPersonCamera->PrimaryComponentTick.bCanEverTick = true;
-  FirstPersonCamera->PrimaryComponentTick.TickGroup = TG_PostUpdateWork;
+  // ИЗМЕНИ ЭТО:
+  FirstPersonCamera->PrimaryComponentTick.TickGroup =
+      TG_PostPhysics; // Tick AFTER everything
+
 
   // Camera socket name for backward compatibility
   CameraSocketName = TEXT("head");
@@ -289,85 +292,51 @@ void ARailsPlayerCharacter::Tick(float DeltaTime) {
 
   UpdateHeadRotation(DeltaTime);
 
+  //==================== CAMERA SYNC (CRITICAL) ====================//
+  if (CameraArm && FirstPersonCamera) {
+    // Force camera arm to match character EXACTLY, no lag
+    FVector TargetPos = GetActorLocation() + FVector(0, 0, BaseEyeHeight);
+    CameraArm->SetWorldLocation(TargetPos);
+
+    if (APlayerController *PC = Cast<APlayerController>(GetController())) {
+      CameraArm->SetWorldRotation(PC->GetControlRotation());
+    }
+  }
+
 //==================== TRAIN BASE SYSTEM ====================//
 
-  if (CurrentTrainInterior) {
-    if (!bTrainSyncInitialized) {
-      bTrainSyncInitialized = true;
-
-      if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-        UPrimitiveComponent *BestFloorComponent = nullptr;
-
-        TArray<UPrimitiveComponent *> Primitives;
-        CurrentTrainInterior->GetComponents<UPrimitiveComponent>(Primitives);
-
-        for (UPrimitiveComponent *Prim : Primitives) {
-          if (Prim->GetName().Equals(TEXT("Floor"), ESearchCase::IgnoreCase)) {
-            BestFloorComponent = Prim;
-            break;
-          }
-        }
-
-        if (!BestFloorComponent) {
-          for (UPrimitiveComponent *Prim : Primitives) {
-            if (Prim->GetName().Contains(TEXT("MovementBase"))) {
-              BestFloorComponent = Prim;
-              break;
-            }
-          }
-        }
-
-        if (!BestFloorComponent) {
-          for (UPrimitiveComponent *Prim : Primitives) {
-            if (Prim->IsA(UBoxComponent::StaticClass()) &&
-                Prim->GetCollisionEnabled() != ECollisionEnabled::NoCollision) {
-              BestFloorComponent = Prim;
-              break;
-            }
-          }
-        }
-
-        if (!BestFloorComponent) {
-          for (UPrimitiveComponent *Prim : Primitives) {
-            if (Prim->IsA(UStaticMeshComponent::StaticClass())) {
-              BestFloorComponent = Prim;
-              break;
-            }
-          }
-        }
-
-        if (BestFloorComponent) {
-          MoveComp->SetBase(BestFloorComponent);
-          UE_LOG(LogRailsChar, Log, TEXT("SetBase to: %s"),
-                 *BestFloorComponent->GetName());
-        }
-      }
-
-      return;
+if (CurrentTrainInterior) {
+  if (!bTrainSyncInitialized) {
+    bTrainSyncInitialized = true;
+    
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement()) {
+      MoveComp->DisableMovement();
     }
-
-    //==================== CAMERA SYNC (CRITICAL) ====================//
-    if (CameraArm && FirstPersonCamera) {
-      // Force camera arm to match character position
-      FVector TargetPos = GetActorLocation() + FVector(0, 0, BaseEyeHeight);
-      CameraArm->SetWorldLocation(TargetPos);
-
-      // Apply controller rotation
-      if (APlayerController *PC = Cast<APlayerController>(GetController())) {
-        CameraArm->SetWorldRotation(PC->GetControlRotation());
-      }
-    }
-
-  } else {
-    if (bTrainSyncInitialized) {
-      if (UCharacterMovementComponent *MoveComp = GetCharacterMovement()) {
-        MoveComp->SetBase(nullptr);
-        UE_LOG(LogRailsChar, Log, TEXT("Base cleared (left train)"));
-      }
-    }
-
-    bTrainSyncInitialized = false;
+    
+    UE_LOG(LogRailsChar, Log, TEXT("Entered train, movement disabled"));
+    return;
   }
+
+  // НЕ СИНХРОНИЗИРУЕМ - просто стоим на месте
+  // Смотрим, дёргается ли персонаж БЕЗ нашего кода
+
+  if (CameraArm && FirstPersonCamera) {
+    FVector TargetCameraPos = GetActorLocation() + FVector(0, 0, BaseEyeHeight);
+    CameraArm->SetWorldLocation(TargetCameraPos);
+
+    if (APlayerController* PC = Cast<APlayerController>(GetController())) {
+      CameraArm->SetWorldRotation(PC->GetControlRotation());
+    }
+  }
+
+} else {
+  if (bTrainSyncInitialized) {
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement()) {
+      MoveComp->SetMovementMode(MOVE_Walking);
+    }
+  }
+
+  bTrainSyncInitialized = false;
 }
 
 //==================== MOVEMENT INPUT ====================//
