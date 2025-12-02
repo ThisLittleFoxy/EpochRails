@@ -1,4 +1,5 @@
 // InteractableDriverSeat.h
+
 // Driver seat interactable - seat with train control capability
 
 #pragma once
@@ -30,7 +31,6 @@ class EPOCHRAILS_API UInteractableDriverSeat : public UInteractableSeat {
 public:
   UInteractableDriverSeat();
 
-protected:
   // ========== DRIVER SEAT SETTINGS ==========
 
   /** Auto-find parent train on BeginPlay */
@@ -42,6 +42,7 @@ protected:
             meta = (EditCondition = "!bAutoFindParentTrain"))
   ARailsTrain *AssignedTrain = nullptr;
 
+protected:
   /** Input Mapping Context for train controls (optional, can be set in
    * controller) */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver Seat|Input")

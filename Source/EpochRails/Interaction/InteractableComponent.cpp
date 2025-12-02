@@ -1,4 +1,5 @@
 // InteractableComponent.cpp
+
 // Implementation of base interactable component
 
 #include "Interaction/InteractableComponent.h"
@@ -13,16 +14,6 @@
 UInteractableComponent::UInteractableComponent() {
   PrimaryComponentTick.bCanEverTick = false;
 
-  // Create interaction trigger sphere
-  InteractionTrigger =
-      CreateDefaultSubobject<USphereComponent>(TEXT("InteractionTrigger"));
-  InteractionTrigger->SetSphereRadius(Settings.InteractionRadius);
-  InteractionTrigger->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-  InteractionTrigger->SetCollisionObjectType(ECC_WorldDynamic);
-  InteractionTrigger->SetCollisionResponseToAllChannels(ECR_Ignore);
-  InteractionTrigger->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-  InteractionTrigger->SetGenerateOverlapEvents(true);
-
   // Set default interaction prompt based on type
   Settings.InteractionPrompt = FText::FromString("Press E to interact");
 }
@@ -30,28 +21,24 @@ UInteractableComponent::UInteractableComponent() {
 void UInteractableComponent::BeginPlay() {
   Super::BeginPlay();
 
-  // Attach trigger to owner's root
-  if (AActor *Owner = GetOwner()) {
-    InteractionTrigger->AttachToComponent(
-        Owner->GetRootComponent(),
-        FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-    InteractionTrigger->SetSphereRadius(Settings.InteractionRadius);
-
-    // Bind overlap events
-    InteractionTrigger->OnComponentBeginOverlap.AddDynamic(
-        this, &UInteractableComponent::OnTriggerBeginOverlap);
-    InteractionTrigger->OnComponentEndOverlap.AddDynamic(
-        this, &UInteractableComponent::OnTriggerEndOverlap);
-
-    // Auto-detect highlight component if not set
-    if (!HighlightComponent) {
-      AutoDetectHighlightComponent();
-    }
-
-    UE_LOG(LogEpochRails, Log,
-           TEXT("InteractableComponent initialized on %s (Type: %d)"),
-           *Owner->GetName(), (int32)InteractionType);
+  AActor *Owner = GetOwner();
+  if (!Owner) {
+    return;
   }
+
+  // Auto-detect highlight component if not set
+  if (!HighlightComponent) {
+    AutoDetectHighlightComponent();
+  }
+
+  // Setup trigger if it exists
+  if (InteractionTrigger) {
+    SetupTriggerCallbacks();
+  }
+
+  UE_LOG(LogEpochRails, Log,
+         TEXT("InteractableComponent initialized on %s (Type: %d)"),
+         *Owner->GetName(), (int32)InteractionType);
 }
 
 void UInteractableComponent::EndPlay(const EEndPlayReason::Type EndPlayReason) {
@@ -66,13 +53,40 @@ void UInteractableComponent::EndPlay(const EEndPlayReason::Type EndPlayReason) {
   Super::EndPlay(EndPlayReason);
 }
 
+void UInteractableComponent::SetupExternalTrigger(
+    USphereComponent *ExternalTrigger) {
+  if (!ExternalTrigger) {
+    UE_LOG(LogEpochRails, Warning,
+           TEXT("SetupExternalTrigger called with null trigger"));
+    return;
+  }
+
+  InteractionTrigger = ExternalTrigger;
+  InteractionTrigger->SetSphereRadius(Settings.InteractionRadius);
+  SetupTriggerCallbacks();
+
+  UE_LOG(LogEpochRails, Log,
+         TEXT("External trigger assigned to InteractableComponent"));
+}
+
+void UInteractableComponent::SetupTriggerCallbacks() {
+  if (!InteractionTrigger) {
+    return;
+  }
+
+  // Bind overlap events
+  InteractionTrigger->OnComponentBeginOverlap.AddDynamic(
+      this, &UInteractableComponent::OnTriggerBeginOverlap);
+  InteractionTrigger->OnComponentEndOverlap.AddDynamic(
+      this, &UInteractableComponent::OnTriggerEndOverlap);
+}
+
 // ========== TRIGGER EVENTS ==========
 
 void UInteractableComponent::OnTriggerBeginOverlap(
     UPrimitiveComponent *OverlappedComponent, AActor *OtherActor,
     UPrimitiveComponent *OtherComp, int32 OtherBodyIndex, bool bFromSweep,
     const FHitResult &SweepResult) {
-
   ACharacter *Character = Cast<ACharacter>(OtherActor);
   if (!Character)
     return;
@@ -87,7 +101,6 @@ void UInteractableComponent::OnTriggerBeginOverlap(
 void UInteractableComponent::OnTriggerEndOverlap(
     UPrimitiveComponent *OverlappedComponent, AActor *OtherActor,
     UPrimitiveComponent *OtherComp, int32 OtherBodyIndex) {
-
   ACharacter *Character = Cast<ACharacter>(OtherActor);
   if (!Character)
     return;
@@ -183,13 +196,11 @@ void UInteractableComponent::SetHighlighted(bool bHighlight) {
     HighlightComponent->SetRenderCustomDepth(true);
     HighlightComponent->SetCustomDepthStencilValue(
         Settings.CustomDepthStencilValue);
-
     UE_LOG(LogEpochRails, Verbose, TEXT("Highlight enabled on %s"),
            *HighlightComponent->GetName());
   } else {
     // Disable custom depth
     HighlightComponent->SetRenderCustomDepth(false);
-
     UE_LOG(LogEpochRails, Verbose, TEXT("Highlight disabled on %s"),
            *HighlightComponent->GetName());
   }

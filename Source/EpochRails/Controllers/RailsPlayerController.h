@@ -52,6 +52,9 @@ protected:
   UPROPERTY(EditAnywhere, Category = "Input|Train Controls")
   UInputAction *TrainGearNeutralAction;
 
+  UPROPERTY(EditAnywhere, Category = "Input|Interaction")
+  UInputAction *InteractAction;
+
   // ========== Mobile Controls ==========
 
   /** Mobile controls widget to spawn */
@@ -99,6 +102,12 @@ protected:
   void Jump(const FInputActionValue &Value);
 
   // ========== Train Input Handlers ==========
+
+  // ========== Interaction Input Handlers ==========
+
+  /** Interact handler (F key) */
+  UFUNCTION()
+  void OnInteract();
 
   /** Train throttle handler (W/S keys) */
   UFUNCTION()

@@ -1,4 +1,5 @@
 // InteractableComponent.h
+
 // Base component for all interactable objects
 
 #pragma once
@@ -46,12 +47,6 @@ protected:
             Category = "Interaction|Animation")
   FInteractionAnimationSettings AnimationSettings;
 
-  // ========== COMPONENTS ==========
-
-  /** Trigger sphere for detecting nearby players */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-  USphereComponent *InteractionTrigger;
-
   // ========== STATE ==========
 
   /** Is this interactable currently enabled */
@@ -84,19 +79,6 @@ protected:
 
   virtual void BeginPlay() override;
   virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-
-  // ========== TRIGGER EVENTS ==========
-
-  UFUNCTION()
-  void OnTriggerBeginOverlap(UPrimitiveComponent *OverlappedComponent,
-                             AActor *OtherActor, UPrimitiveComponent *OtherComp,
-                             int32 OtherBodyIndex, bool bFromSweep,
-                             const FHitResult &SweepResult);
-
-  UFUNCTION()
-  void OnTriggerEndOverlap(UPrimitiveComponent *OverlappedComponent,
-                           AActor *OtherActor, UPrimitiveComponent *OtherComp,
-                           int32 OtherBodyIndex);
 
 public:
   // ========== EVENTS (BlueprintAssignable) ==========
@@ -186,6 +168,12 @@ public:
   UFUNCTION(BlueprintPure, Category = "Interaction")
   FInteractionSettings GetSettings() const { return Settings; }
 
+  /** Set interaction settings */
+  UFUNCTION(BlueprintCallable, Category = "Interaction")
+  void SetSettings(const FInteractionSettings &NewSettings) {
+    Settings = NewSettings;
+  }
+
   /** Get trigger component */
   UFUNCTION(BlueprintPure, Category = "Interaction")
   USphereComponent *GetTrigger() const { return InteractionTrigger; }
@@ -208,6 +196,13 @@ public:
   UFUNCTION(BlueprintCallable, Category = "Interaction")
   void AutoDetectHighlightComponent();
 
+  /**
+   * Initialize with external trigger component
+   * Call this if the trigger is created at the actor level
+   */
+  UFUNCTION(BlueprintCallable, Category = "Interaction")
+  void SetupExternalTrigger(USphereComponent *ExternalTrigger);
+
 protected:
   /**
    * Internal function to start interaction
@@ -218,4 +213,29 @@ protected:
    * Internal function to end interaction
    */
   virtual void EndInteraction(ACharacter *Character);
+
+  /**
+   * Trigger sphere reference (can be external or internal)
+   */
+  UPROPERTY()
+  USphereComponent *InteractionTrigger;
+
+private:
+  /**
+   * Setup trigger callbacks
+   */
+  void SetupTriggerCallbacks();
+
+  // ========== TRIGGER EVENTS ==========
+
+  UFUNCTION()
+  void OnTriggerBeginOverlap(UPrimitiveComponent *OverlappedComponent,
+                             AActor *OtherActor, UPrimitiveComponent *OtherComp,
+                             int32 OtherBodyIndex, bool bFromSweep,
+                             const FHitResult &SweepResult);
+
+  UFUNCTION()
+  void OnTriggerEndOverlap(UPrimitiveComponent *OverlappedComponent,
+                           AActor *OtherActor, UPrimitiveComponent *OtherComp,
+                           int32 OtherBodyIndex);
 };
