@@ -1,3 +1,4 @@
+// RailsPlayerCharacter.cpp
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Character/RailsPlayerCharacter.h"
@@ -11,6 +12,8 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "InputActionValue.h"
+#include "Interaction/InteractionManagerComponent.h" // ADD THIS
+#include "Interaction/InteractionTypes.h"            // ADD THIS
 #include "Kismet/KismetMathLibrary.h"
 
 ARailsPlayerCharacter::ARailsPlayerCharacter() {
@@ -45,6 +48,10 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
   FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
   FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
   FollowCamera->bUsePawnControlRotation = false;
+
+  // Create interaction manager component (ADD THIS)
+  InteractionManager = CreateDefaultSubobject<UInteractionManagerComponent>(
+      TEXT("InteractionManager"));
 }
 
 void ARailsPlayerCharacter::BeginPlay() {
@@ -56,6 +63,15 @@ void ARailsPlayerCharacter::BeginPlay() {
   // Initialize movement speed
   if (UCharacterMovementComponent *MovementComp = GetCharacterMovement()) {
     MovementComp->MaxWalkSpeed = WalkSpeed;
+  }
+
+  // Log interaction manager status (ADD THIS)
+  if (InteractionManager) {
+    UE_LOG(LogEpochRails, Log,
+           TEXT("InteractionManager initialized on character: %s"), *GetName());
+  } else {
+    UE_LOG(LogEpochRails, Warning,
+           TEXT("InteractionManager is NULL on character: %s"), *GetName());
   }
 }
 
@@ -88,6 +104,9 @@ void ARailsPlayerCharacter::UpdateAnimationVariables() {
       MovementDirection = 0.0f;
     }
   }
+
+  // Note: bIsSitting, bIsInteracting, bIsControllingTrain are set by
+  // InteractableSeat and InteractableDriverSeat components
 }
 
 void ARailsPlayerCharacter::SetupCameraAttachment() {
@@ -188,6 +207,7 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
     UInputComponent *PlayerInputComponent) {
   if (UEnhancedInputComponent *EnhancedInputComponent =
           Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
+
     // Jumping
     EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this,
                                        &ACharacter::Jump);
@@ -218,6 +238,18 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
       UE_LOG(LogEpochRails, Warning,
              TEXT("SprintAction is NULL! Please assign it in Blueprint."));
     }
+
+    // Interaction (ADD THIS ENTIRE BLOCK)
+    if (InteractAction) {
+      EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started,
+                                         this,
+                                         &ARailsPlayerCharacter::Interact);
+      UE_LOG(LogEpochRails, Log, TEXT("Interact action bound successfully"));
+    } else {
+      UE_LOG(LogEpochRails, Warning,
+             TEXT("InteractAction is NULL! Please assign it in Blueprint."));
+    }
+
   } else {
     UE_LOG(LogEpochRails, Error,
            TEXT("'%s' Failed to find an Enhanced Input component!"),
@@ -284,3 +316,23 @@ void ARailsPlayerCharacter::DoLook(float Yaw, float Pitch) {
 void ARailsPlayerCharacter::DoJumpStart() { Jump(); }
 
 void ARailsPlayerCharacter::DoJumpEnd() { StopJumping(); }
+
+// ========== INTERACTION FUNCTIONS (ADD ALL OF THESE) ==========
+
+void ARailsPlayerCharacter::Interact(const FInputActionValue &Value) {
+  DoInteract();
+}
+
+void ARailsPlayerCharacter::DoInteract() {
+  if (!InteractionManager) {
+    UE_LOG(LogEpochRails, Warning,
+           TEXT("DoInteract: InteractionManager is NULL"));
+    return;
+  }
+
+  UE_LOG(LogEpochRails, Verbose, TEXT("DoInteract called on character: %s"),
+         *GetName());
+
+  // Forward to InteractionManager
+  InteractionManager->HandleInteractInput();
+}
