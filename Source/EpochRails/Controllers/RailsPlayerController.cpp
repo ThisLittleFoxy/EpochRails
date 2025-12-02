@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "RailsPlayerController.h"
 
@@ -13,7 +13,6 @@
 #include "InputMappingContext.h"
 #include "Train/RailsTrain.h"
 #include "Widgets/Input/SVirtualJoystick.h"
-#include "Interaction/InteractionManagerComponent.h"
 
 void ARailsPlayerController::BeginPlay() {
   Super::BeginPlay();
@@ -223,13 +222,6 @@ void ARailsPlayerController::BindInputActions() {
                TEXT("Bound action '%s' to Train Gear Neutral handler"),
                *ActionName);
         BoundActions.Add(Action);
-      } else if (ActionName.Contains(TEXT("Interact")) ||
-                 ActionName.Contains(TEXT("IA_Interact"))) {
-        EnhancedInputComponent->BindAction(Action, ETriggerEvent::Started, this,
-                                           &ARailsPlayerController::OnInteract);
-        UE_LOG(LogEpochRails, Log,
-               TEXT("Bound action '%s' to Interact handler"), *ActionName);
-        BoundActions.Add(Action);
       } else {
         UE_LOG(LogEpochRails, Warning, TEXT("No handler found for action: %s"),
                *ActionName);
@@ -423,31 +415,4 @@ void ARailsPlayerController::OnTrainGearNeutral() {
     Train->SetGear(ETrainGear::Neutral);
     UE_LOG(LogEpochRails, Log, TEXT("Train Gear: NEUTRAL"));
   }
-}
-
-// ========== INTERACTION ==========
-
-void ARailsPlayerController::OnInteract() {
-  UE_LOG(LogEpochRails, Log, TEXT("Interact (F key) pressed"));
-
-  ACharacter *ControlledCharacter = Cast<ACharacter>(GetPawn());
-  if (!ControlledCharacter) {
-    UE_LOG(LogEpochRails, Warning, TEXT("OnInteract: No character controlled"));
-    return;
-  }
-
-  // Find InteractionManagerComponent on character
-  UInteractionManagerComponent *InteractionManager =
-      ControlledCharacter->FindComponentByClass<UInteractionManagerComponent>();
-
-  if (!InteractionManager) {
-    UE_LOG(LogEpochRails, Warning,
-           TEXT("OnInteract: Character has no InteractionManagerComponent"));
-    return;
-  }
-
-  // Call HandleInteractInput() on the manager
-  InteractionManager->HandleInteractInput();
-  UE_LOG(LogEpochRails, Log, TEXT("Interaction triggered on %s"),
-         *ControlledCharacter->GetName());
 }

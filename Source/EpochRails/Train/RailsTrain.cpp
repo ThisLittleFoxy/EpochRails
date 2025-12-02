@@ -8,7 +8,6 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "RailsSplinePath.h"
-#include "Interaction/InteractionManagerComponent.h"  // ADD THIS LINE
 
 ARailsTrain::ARailsTrain() {
   PrimaryActorTick.bCanEverTick = true;
@@ -36,10 +35,6 @@ ARailsTrain::ARailsTrain() {
   BoardingZone->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
   BoardingZone->SetCollisionResponseToAllChannels(ECR_Ignore);
   BoardingZone->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-
-  // ========== ADD INTERACTION MANAGER (CRITICAL!) ==========
-  InteractionManager = CreateDefaultSubobject<UInteractionManagerComponent>(
-      TEXT("InteractionManager"));
 }
 
 
