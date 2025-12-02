@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "RailsPlayerController.h"
-
 #include "Blueprint/UserWidget.h"
 #include "Engine/LocalPlayer.h"
 #include "EnhancedInputComponent.h"
@@ -11,11 +10,11 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
-#include "Train/RailsTrain.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
 void ARailsPlayerController::BeginPlay() {
   Super::BeginPlay();
+
   UE_LOG(LogEpochRails, Log,
          TEXT("RailsPlayerController::BeginPlay - Controller: %s"), *GetName());
   UE_LOG(LogEpochRails, Log, TEXT("IsLocalPlayerController: %s"),
@@ -26,7 +25,8 @@ void ARailsPlayerController::BeginPlay() {
   // only spawn touch controls on local player controllers
   if (ShouldUseTouchControls() && IsLocalPlayerController()) {
     // spawn the mobile controls widget
-    MobileControlsWidget = CreateWidget(this, MobileControlsWidgetClass);
+    MobileControlsWidget =
+        CreateWidget<UUserWidget>(this, MobileControlsWidgetClass);
     if (MobileControlsWidget) {
       // add the controls to the player screen
       MobileControlsWidget->AddToPlayerScreen(0);
@@ -41,6 +41,7 @@ void ARailsPlayerController::BeginPlay() {
 
 void ARailsPlayerController::SetupInputComponent() {
   Super::SetupInputComponent();
+
   UE_LOG(LogEpochRails, Log,
          TEXT("RailsPlayerController::SetupInputComponent - Controller: %s"),
          *GetName());
@@ -127,7 +128,6 @@ void ARailsPlayerController::BindInputActions() {
 
   // Iterate through all mapping contexts and bind actions
   TSet<const UInputAction *> BoundActions;
-
   for (UInputMappingContext *Context : AllContexts) {
     if (!Context) {
       continue;
@@ -172,56 +172,6 @@ void ARailsPlayerController::BindInputActions() {
         UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to Jump handler"),
                *ActionName);
         BoundActions.Add(Action);
-      } else if (ActionName.Contains(TEXT("TrainThrottle")) ||
-                 ActionName.Contains(TEXT("IA_TrainThrottle"))) {
-        EnhancedInputComponent->BindAction(
-            Action, ETriggerEvent::Triggered, this,
-            &ARailsPlayerController::OnTrainThrottle);
-        EnhancedInputComponent->BindAction(
-            Action, ETriggerEvent::Completed, this,
-            &ARailsPlayerController::OnTrainThrottle);
-        UE_LOG(LogEpochRails, Log,
-               TEXT("Bound action '%s' to Train Throttle handler"),
-               *ActionName);
-        BoundActions.Add(Action);
-      } else if (ActionName.Contains(TEXT("TrainBrake")) ||
-                 ActionName.Contains(TEXT("IA_TrainBrake"))) {
-        EnhancedInputComponent->BindAction(
-            Action, ETriggerEvent::Triggered, this,
-            &ARailsPlayerController::OnTrainBrake);
-        EnhancedInputComponent->BindAction(
-            Action, ETriggerEvent::Completed, this,
-            &ARailsPlayerController::OnTrainBrake);
-        UE_LOG(LogEpochRails, Log,
-               TEXT("Bound action '%s' to Train Brake handler"), *ActionName);
-        BoundActions.Add(Action);
-      } else if (ActionName.Contains(TEXT("TrainGearForward")) ||
-                 ActionName.Contains(TEXT("IA_TrainGearForward"))) {
-        EnhancedInputComponent->BindAction(
-            Action, ETriggerEvent::Started, this,
-            &ARailsPlayerController::OnTrainGearForward);
-        UE_LOG(LogEpochRails, Log,
-               TEXT("Bound action '%s' to Train Gear Forward handler"),
-               *ActionName);
-        BoundActions.Add(Action);
-      } else if (ActionName.Contains(TEXT("TrainGearReverse")) ||
-                 ActionName.Contains(TEXT("IA_TrainGearReverse"))) {
-        EnhancedInputComponent->BindAction(
-            Action, ETriggerEvent::Started, this,
-            &ARailsPlayerController::OnTrainGearReverse);
-        UE_LOG(LogEpochRails, Log,
-               TEXT("Bound action '%s' to Train Gear Reverse handler"),
-               *ActionName);
-        BoundActions.Add(Action);
-      } else if (ActionName.Contains(TEXT("TrainGearNeutral")) ||
-                 ActionName.Contains(TEXT("IA_TrainGearNeutral"))) {
-        EnhancedInputComponent->BindAction(
-            Action, ETriggerEvent::Started, this,
-            &ARailsPlayerController::OnTrainGearNeutral);
-        UE_LOG(LogEpochRails, Log,
-               TEXT("Bound action '%s' to Train Gear Neutral handler"),
-               *ActionName);
-        BoundActions.Add(Action);
       } else {
         UE_LOG(LogEpochRails, Warning, TEXT("No handler found for action: %s"),
                *ActionName);
@@ -233,9 +183,9 @@ void ARailsPlayerController::BindInputActions() {
          BoundActions.Num());
 }
 
-
 void ARailsPlayerController::OnPossess(APawn *InPawn) {
   Super::OnPossess(InPawn);
+
   UE_LOG(LogEpochRails, Verbose,
          TEXT("RailsPlayerController::OnPossess - Pawn: %s"),
          InPawn ? *InPawn->GetName() : TEXT("NULL"));
@@ -245,7 +195,6 @@ void ARailsPlayerController::OnPossess(APawn *InPawn) {
     if (PossessedCharacter) {
       UE_LOG(LogEpochRails, Verbose, TEXT("Possessed Character: %s"),
              *PossessedCharacter->GetName());
-
       if (UCharacterMovementComponent *MovementComp =
               PossessedCharacter->GetCharacterMovement()) {
         UE_LOG(LogEpochRails, Verbose,
@@ -288,6 +237,7 @@ void ARailsPlayerController::Move(const FInputActionValue &Value) {
   // Get forward and right vectors
   const FRotator Rotation = GetControlRotation();
   const FRotator YawRotation(0, Rotation.Yaw, 0);
+
   const FVector ForwardDirection =
       FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
   const FVector RightDirection =
@@ -325,94 +275,5 @@ void ARailsPlayerController::Jump(const FInputActionValue &Value) {
   if (ACharacter *ControlledCharacter = Cast<ACharacter>(GetPawn())) {
     ControlledCharacter->Jump();
     UE_LOG(LogEpochRails, Log, TEXT("Jump executed on character"));
-  }
-}
-
-// ========== TRAIN CONTROLS ==========
-
-ARailsTrain *ARailsPlayerController::GetControlledTrain() const {
-  ACharacter *ControlledCharacter = Cast<ACharacter>(GetPawn());
-  if (!ControlledCharacter) {
-    return nullptr;
-  }
-
-  // Check if standing on train platform
-  FHitResult HitResult;
-  FVector StartLocation = ControlledCharacter->GetActorLocation();
-  FVector EndLocation = StartLocation - FVector(0, 0, 200.0f);
-
-  FCollisionQueryParams QueryParams;
-  QueryParams.AddIgnoredActor(ControlledCharacter);
-
-  if (GetWorld()->LineTraceSingleByChannel(
-          HitResult, StartLocation, EndLocation, ECC_Visibility, QueryParams)) {
-    ARailsTrain *Train = Cast<ARailsTrain>(HitResult.GetActor());
-    if (Train && Train->IsCharacterOnTrain(ControlledCharacter)) {
-      return Train;
-    }
-  }
-
-  return nullptr;
-}
-
-void ARailsPlayerController::OnTrainThrottle(const FInputActionValue &Value) {
-  float ThrottleValue = Value.Get<float>();
-  ARailsTrain *Train = GetControlledTrain();
-
-  if (Train) {
-    if (ThrottleValue > 0.0f) {
-      // W key - apply throttle
-      Train->SetThrottle(ThrottleValue);
-      Train->SetBrake(0.0f);
-      UE_LOG(LogEpochRails, Verbose, TEXT("Train Throttle: %.2f"),
-             ThrottleValue);
-    } else if (ThrottleValue < 0.0f) {
-      // S key - apply brake
-      Train->SetBrake(FMath::Abs(ThrottleValue));
-      Train->SetThrottle(0.0f);
-      UE_LOG(LogEpochRails, Verbose, TEXT("Train Brake (S key): %.2f"),
-             FMath::Abs(ThrottleValue));
-    } else {
-      // Released - coast
-      Train->SetThrottle(0.0f);
-    }
-  }
-}
-
-void ARailsPlayerController::OnTrainBrake(const FInputActionValue &Value) {
-  float BrakeValue = Value.Get<float>();
-  ARailsTrain *Train = GetControlledTrain();
-
-  if (Train) {
-    Train->SetBrake(BrakeValue);
-    if (BrakeValue > 0.0f) {
-      Train->SetThrottle(0.0f); // Cut throttle when braking
-      UE_LOG(LogEpochRails, Verbose, TEXT("Train Brake (Space): %.2f"),
-             BrakeValue);
-    }
-  }
-}
-
-void ARailsPlayerController::OnTrainGearForward() {
-  ARailsTrain *Train = GetControlledTrain();
-  if (Train) {
-    Train->SetGear(ETrainGear::Forward);
-    UE_LOG(LogEpochRails, Log, TEXT("Train Gear: FORWARD"));
-  }
-}
-
-void ARailsPlayerController::OnTrainGearReverse() {
-  ARailsTrain *Train = GetControlledTrain();
-  if (Train) {
-    Train->SetGear(ETrainGear::Reverse);
-    UE_LOG(LogEpochRails, Log, TEXT("Train Gear: REVERSE"));
-  }
-}
-
-void ARailsPlayerController::OnTrainGearNeutral() {
-  ARailsTrain *Train = GetControlledTrain();
-  if (Train) {
-    Train->SetGear(ETrainGear::Neutral);
-    UE_LOG(LogEpochRails, Log, TEXT("Train Gear: NEUTRAL"));
   }
 }

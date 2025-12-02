@@ -1,4 +1,3 @@
-// RailsPlayerCharacter.cpp
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Character/RailsPlayerCharacter.h"
@@ -189,7 +188,6 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
     UInputComponent *PlayerInputComponent) {
   if (UEnhancedInputComponent *EnhancedInputComponent =
           Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
-
     // Jumping
     EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this,
                                        &ACharacter::Jump);
@@ -220,7 +218,6 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
       UE_LOG(LogEpochRails, Warning,
              TEXT("SprintAction is NULL! Please assign it in Blueprint."));
     }
-
   } else {
     UE_LOG(LogEpochRails, Error,
            TEXT("'%s' Failed to find an Enhanced Input component!"),
