@@ -12,14 +12,12 @@ class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
 struct FInputActionValue;
-class UInteractionManagerComponent;  // ADD THIS
-enum class EInteractionType : uint8; // ADD THIS
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
 /**
  * A simple player-controllable third person character
- * Implements a controllable orbiting camera and interaction system
+ * Implements a controllable orbiting camera
  */
 UCLASS(abstract)
 class ARailsPlayerCharacter : public ACharacter {
@@ -34,11 +32,6 @@ class ARailsPlayerCharacter : public ACharacter {
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components",
             meta = (AllowPrivateAccess = "true"))
   UCameraComponent *FollowCamera;
-
-  /** Interaction manager component (ADD THIS) */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components",
-            meta = (AllowPrivateAccess = "true"))
-  UInteractionManagerComponent *InteractionManager;
 
 protected:
   // ========== Camera Settings ==========
@@ -98,10 +91,6 @@ protected:
   UPROPERTY(EditAnywhere, Category = "Input")
   UInputAction *SprintAction;
 
-  /** Interact Input Action (ADD THIS) */
-  UPROPERTY(EditAnywhere, Category = "Input")
-  UInputAction *InteractAction;
-
 public:
   // ========== Animation Variables (PUBLIC for AnimBP access) ==========
 
@@ -120,34 +109,6 @@ public:
   /** Is the character in the air? (for Animation Blueprint) */
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
   bool bIsInAir = false;
-
-  // ========== Interaction Animation Variables (ADD ALL OF THESE) ==========
-
-  /** Is character currently sitting (for Animation Blueprint) */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly,
-            Category = "Interaction|Animation")
-  bool bIsSitting = false;
-
-  /** Is character currently interacting with something (for Animation
-   * Blueprint) */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly,
-            Category = "Interaction|Animation")
-  bool bIsInteracting = false;
-
-  /** Is character currently controlling train (for Animation Blueprint) */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly,
-            Category = "Interaction|Animation")
-  bool bIsControllingTrain = false;
-
-  /** Current interaction type (for Animation Blueprint) */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly,
-            Category = "Interaction|Animation")
-  EInteractionType CurrentInteractionType;
-
-  /** Actor currently being interacted with (for Animation Blueprint) */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly,
-            Category = "Interaction|Animation")
-  AActor *CurrentInteractedActor = nullptr;
 
 public:
   /** Constructor */
@@ -183,9 +144,6 @@ protected:
   /** Called when sprint is stopped */
   void StopSprint(const FInputActionValue &Value);
 
-  /** Called when interact key is pressed (ADD THIS) */
-  void Interact(const FInputActionValue &Value);
-
 public:
   /** Dynamically change camera socket at runtime */
   UFUNCTION(BlueprintCallable, Category = "Camera")
@@ -219,10 +177,6 @@ public:
   UFUNCTION(BlueprintCallable, Category = "Input")
   virtual void DoJumpEnd();
 
-  /** Handle interact input (ADD THIS) */
-  UFUNCTION(BlueprintCallable, Category = "Interaction")
-  virtual void DoInteract();
-
 public:
   /** Returns CameraBoom subobject **/
   FORCEINLINE class USpringArmComponent *GetCameraBoom() const {
@@ -232,12 +186,6 @@ public:
   /** Returns FollowCamera subobject **/
   FORCEINLINE class UCameraComponent *GetFollowCamera() const {
     return FollowCamera;
-  }
-
-  /** Returns InteractionManager subobject (ADD THIS) **/
-  FORCEINLINE class UInteractionManagerComponent *
-  GetInteractionManager() const {
-    return InteractionManager;
   }
 
   /** Returns whether character is sprinting */
@@ -251,13 +199,4 @@ public:
 
   /** Returns whether character is in air */
   FORCEINLINE bool IsInAir() const { return bIsInAir; }
-
-  /** Returns whether character is sitting (ADD THIS) */
-  FORCEINLINE bool IsSitting() const { return bIsSitting; }
-
-  /** Returns whether character is interacting (ADD THIS) */
-  FORCEINLINE bool IsInteracting() const { return bIsInteracting; }
-
-  /** Returns whether character is controlling train (ADD THIS) */
-  FORCEINLINE bool IsControllingTrain() const { return bIsControllingTrain; }
 };
