@@ -11,6 +11,7 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "InputActionValue.h"
+#include "Interaction/InteractionComponent.h"
 #include "Kismet/KismetMathLibrary.h"
 
 ARailsPlayerCharacter::ARailsPlayerCharacter() {
@@ -45,6 +46,10 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
   FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
   FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
   FollowCamera->bUsePawnControlRotation = false;
+
+  // Create interaction component
+  InteractionComponent =
+      CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
 }
 
 void ARailsPlayerCharacter::BeginPlay() {
@@ -218,6 +223,16 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
       UE_LOG(LogEpochRails, Warning,
              TEXT("SprintAction is NULL! Please assign it in Blueprint."));
     }
+
+    // Interacting
+    if (InteractAction) {
+      EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started,
+                                         this, &ARailsPlayerCharacter::Interact);
+      UE_LOG(LogEpochRails, Log, TEXT("Interact action bound successfully"));
+    } else {
+      UE_LOG(LogEpochRails, Warning,
+             TEXT("InteractAction is NULL! Please assign it in Blueprint."));
+    }
   } else {
     UE_LOG(LogEpochRails, Error,
            TEXT("'%s' Failed to find an Enhanced Input component!"),
@@ -233,6 +248,10 @@ void ARailsPlayerCharacter::StopSprint(const FInputActionValue &Value) {
   DoStopSprint();
 }
 
+void ARailsPlayerCharacter::Interact(const FInputActionValue &Value) {
+  DoInteract();
+}
+
 void ARailsPlayerCharacter::DoStartSprint() {
   if (UCharacterMovementComponent *MovementComp = GetCharacterMovement()) {
     bIsSprinting = true;
@@ -246,6 +265,14 @@ void ARailsPlayerCharacter::DoStopSprint() {
     bIsSprinting = false;
     MovementComp->MaxWalkSpeed = WalkSpeed;
     UE_LOG(LogEpochRails, Log, TEXT("Sprint stopped - Speed: %f"), WalkSpeed);
+  }
+}
+
+void ARailsPlayerCharacter::DoInteract() {
+  if (InteractionComponent) {
+    bool bSuccess = InteractionComponent->TryInteract();
+    UE_LOG(LogEpochRails, Log, TEXT("Interaction attempt: %s"),
+           bSuccess ? TEXT("Success") : TEXT("Failed"));
   }
 }
 
