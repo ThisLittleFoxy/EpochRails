@@ -1,558 +1,961 @@
-# Train Control System - Blueprint Implementation Guide
+# Train Control System - Complete Blueprint Guide
 
 ## Overview
 
-This system allows players to sit in a train driver's seat and control the train using only Blueprint. It integrates with the existing Interaction System to provide a seamless experience.
+This system integrates a driveable seat with your **existing RailsTrain class** using only Blueprint. The player can sit in the driver's seat and control the train's speed using the train's existing C++ API.
 
-## Features
-
-✅ **Seat Interaction** - Use existing interaction system to sit/exit  
-✅ **Camera Transition** - Smooth camera movement when sitting  
-✅ **Control Mode** - Toggle between sitting and driving  
-✅ **Speed Control** - Accelerate, decelerate, and reverse  
-✅ **Visual Feedback** - UI indicators for speed and mode  
-✅ **Blueprint Only** - No C++ code required  
+**Key Point**: This system does NOT replace or duplicate RailsTrain. It only adds player interaction capabilities through Blueprint.
 
 ## Architecture
 
-### Components
-
-1. **BP_TrainDriverSeat** - Interactable seat actor
-2. **BP_TrainController** - Main train control logic
-3. **WBP_TrainHUD** - Driver UI widget
-4. **Enhanced Input Actions** - Control bindings
-
-### Data Flow
+### System Components
 
 ```
-Player → Interact with Seat → Attach Player to Seat → Switch Camera → Enable Controls
-Player → Exit Control → Detach Player → Restore Camera → Disable Controls
+[Player Character]
+       |
+       | (Interacts with E)
+       v
+[BP_TrainDriverSeat] (InteractableActor)
+       |
+       | (Calls C++ API)
+       v
+[ARailsTrain] (Your existing C++ class)
+       |
+       | (Moves along)
+       v
+[ARailsSplinePath] (Your existing spline system)
 ```
+
+### Integration Points
+
+**From Blueprint to C++:**
+- `BP_TrainDriverSeat` calls `RailsTrain->SetSpeed(float)`
+- Seat calls `RailsTrain->StartTrain()` / `StopTrain()`
+- Seat reads `RailsTrain->GetCurrentSpeed()`
+
+**No C++ Changes Needed:**
+- RailsTrain.h - unchanged
+- RailsTrain.cpp - unchanged
+- All existing functionality preserved
 
 ## Implementation Guide
 
-### Step 1: Setup Input Actions
+### Phase 1: Input System Setup
 
-Create the following Input Actions in `Content/Input/`:
+#### Step 1.1: Create Input Actions
 
-#### IA_ExitSeat
-- **Value Type**: Digital (bool)
-- **Mapping**: Key `E` (same as interact)
+Create these Enhanced Input Actions in `Content/Input/`:
 
-#### IA_TrainThrottle
-- **Value Type**: Axis1D (float)
-- **Mapping**: Keys `W` (+1.0) and `S` (-1.0)
+**IA_ExitSeat**
+- Type: Input Action
+- Value Type: Digital (bool)
+- Description: Exit driver seat
 
-#### IA_TrainBrake
-- **Value Type**: Digital (bool)
-- **Mapping**: Key `Space`
+**IA_TrainThrottle**
+- Type: Input Action  
+- Value Type: Axis1D (float)
+- Description: Control train speed
 
-#### IA_TrainReverse
-- **Value Type**: Digital (bool)
-- **Mapping**: Key `R`
+**IA_TrainBrake**
+- Type: Input Action
+- Value Type: Digital (bool)
+- Description: Emergency brake
 
-Add these to your Input Mapping Context (`IMC_Default`):
-- `IA_ExitSeat` → E
-- `IA_TrainThrottle` → W (scale: 1.0), S (scale: -1.0)
-- `IA_TrainBrake` → Space
-- `IA_TrainReverse` → R
+#### Step 1.2: Create Input Mapping Context
 
-### Step 2: Create Train Driver Seat Blueprint
+**IMC_TrainControl**
+- Type: Input Mapping Context
 
-**Blueprint**: `Content/Train/BP_TrainDriverSeat`  
-**Parent Class**: `InteractableActor`
+Add Mappings:
+1. **IA_ExitSeat**
+   - Key: E (Keyboard)
+   - Modifiers: None
 
-#### Components
+2. **IA_TrainThrottle**
+   - Key: W (Keyboard)
+   - Modifiers: Scale (1.0)
+   - Key: S (Keyboard)  
+   - Modifiers: Scale (-1.0)
 
-Add these components:
-- **SeatMesh** (Static Mesh) - Visual representation of the seat
-- **SitPosition** (Scene Component) - Player attachment point
-- **CameraPosition** (Scene Component) - Camera target when seated
+3. **IA_TrainBrake**
+   - Key: Space (Keyboard)
+   - Modifiers: None
 
-#### Variables
+### Phase 2: Driver Seat Blueprint
+
+#### Step 2.1: Create Blueprint
+
+**File**: `Content/Train/BP_TrainDriverSeat`
+
+**Settings:**
+- Parent Class: `InteractableActor`
+- Class Settings:
+  - Tick: Disabled (not needed)
+  - Replicates: False (single player for now)
+
+#### Step 2.2: Add Components
+
+**Component Hierarchy:**
+```
+BP_TrainDriverSeat (InteractableActor)
+├─ DefaultSceneRoot (inherited)
+├─ SeatMesh (StaticMeshComponent)
+│  ├─ Collision: BlockAll or QueryOnly
+│  └─ Visibility Collision: Block (for interaction raycast)
+│
+├─ SitPosition (SceneComponent)
+│  └─ Location: Center of seat, slightly above surface
+│
+└─ CameraPosition (SceneComponent)
+   ├─ Location: Behind and above seat
+   └─ Rotation: Angled slightly downward
+```
+
+**SeatMesh Setup:**
+- Static Mesh: Choose seat mesh
+- Material: Your seat material
+- Collision Preset: Custom
+  - Collision Enabled: Query Only
+  - Object Type: WorldStatic
+  - Visibility: Block (required for interaction)
+  - Camera: Ignore
+
+**SitPosition Setup:**
+- Location: (0, 0, 50) relative to seat
+- Rotation: (0, 0, 0)
+- This is where player will be attached
+
+**CameraPosition Setup:**  
+- Location: (-200, 0, 150) relative to seat
+- Rotation: (-15, 0, 0)
+- This gives nice over-shoulder view
+
+#### Step 2.3: Create Variables
+
+**Blueprint Variables:**
 
 ```
-Name                    Type                    Default     Description
-------------------------------------------------------------------------------------
-OwningTrain             BP_TrainController      None        Reference to the train
-SeatedPlayer            AEpochRailsCharacter    None        Currently seated player
-bIsOccupied             Boolean                 false       Is someone sitting?
-SeatInteractionName     String                  "Driver Seat"
-SitActionText           String                  "Sit"
-ExitActionText          String                  "Exit"
+OwningTrain
+  Type: RailsTrain (Object Reference)
+  Category: Train Control
+  Instance Editable: No
+  Tooltip: Reference to the train this seat belongs to
+  Default: None
+
+SeatedPlayer
+  Type: EpochRailsCharacter (Object Reference)
+  Category: Seat State
+  Instance Editable: No
+  Tooltip: Currently seated player
+  Default: None
+
+bIsOccupied
+  Type: Boolean
+  Category: Seat State
+  Instance Editable: No
+  Tooltip: Is someone currently sitting?
+  Default: false
+
+TargetSpeed
+  Type: Float
+  Category: Control
+  Instance Editable: No
+  Tooltip: Target speed set by player input
+  Default: 0.0
+
+MaxControlSpeed
+  Type: Float
+  Category: Control
+  Instance Editable: Yes
+  Tooltip: Maximum speed player can set
+  Default: 2000.0
 ```
 
-#### Properties Setup
+**InteractableActor Properties (Details Panel):**
+- Interaction Name: "Driver Seat"
+- Interaction Action: "Sit"
+- Max Interaction Distance: 150.0
+- Can Interact: true
+- Enable Debug Log: false (enable for testing)
 
-In the Details panel:
-- **Interaction Name**: "Driver Seat"
-- **Interaction Action**: "Sit"
-- **Max Interaction Distance**: 150.0
+### Phase 3: Blueprint Graph Implementation
 
-#### Blueprint Events
+#### Event Graph
 
-##### Event BeginPlay
+##### Event: BeginPlay
+
+**Purpose**: Find and store reference to owning train
+
+**Implementation:**
 ```
 Event BeginPlay
-  ├─ Get Owner
-  ├─ Cast to BP_TrainController
-  ├─ Set Owning Train (reference)
-  └─ [If cast fails, log warning]
+  │
+  ├── Get Owner
+  │   |
+  │   v
+  ├── Cast to RailsTrain
+  │   |
+  │   +--> [Success]
+  │   |      |
+  │   |      v
+  │   |    Set Owning Train (store reference)
+  │   |      |
+  │   |      v
+  │   |    Print String ("Seat initialized for train: {train name}")
+  │   |
+  │   +--> [Failed]
+  │          |
+  │          v
+  │        Print String ("ERROR: Seat must be attached to RailsTrain!")
+  │          |
+  │          v
+  │        Print String (Color: Red, Duration: 10.0)
 ```
 
-##### Can Interact (Override)
+**Nodes:**
+1. Event BeginPlay
+2. Get Owner (inherited from Actor)
+3. Cast to RailsTrain
+4. Branch (implicit in Cast)
+5. Set Owning Train (variable)
+6. Print String (for debug)
+
+##### Override: Can Interact
+
+**Purpose**: Prevent interaction when seat is occupied
+
+**Implementation:**
 ```
-Can Interact
-  ├─ Branch: Is Occupied?
-  │  ├─ True:
-  │  │   └─ Return false
-  │  └─ False:
-  │      └─ Return true
+Can Interact (Override)
+  │
+  ├── Branch: Is Occupied?
+  │   |
+  │   +--> True: Return false
+  │   |
+  │   +--> False: Return true
 ```
 
-##### Get Interaction Action (Override)
+**Return Type**: Boolean
+
+##### Override: Get Interaction Action
+
+**Purpose**: Change interaction text based on state
+
+**Implementation:**
 ```
-Get Interaction Action
-  ├─ Branch: Is Occupied?
-  │  ├─ True:
-  │  │   └─ Return "Occupied"
-  │  └─ False:
-  │      └─ Return "Sit"
+Get Interaction Action (Override)
+  │
+  ├── Branch: Is Occupied?
+  │   |
+  │   +--> True: Return "Occupied"
+  │   |
+  │   +--> False: Return "Sit"
 ```
 
-##### Event On Interact
+**Return Type**: String
+
+##### Event: On Interact
+
+**Purpose**: Handle player interaction (E key press)
+
+**Implementation:**
 ```
 Event On Interact
-  ├─ Branch: Is Occupied?
-  │  ├─ True:
-  │  │   └─ Return false
-  │  └─ False:
-  │      ├─ Get Player Character (from Interactor)
-  │      ├─ Call: Sit Player (Player Character)
-  │      └─ Return true
+  │
+  ├── Branch: Is Occupied?
+  │   |
+  │   +--> True:
+  │   |      |
+  │   |      v
+  │   |    Return false (cannot sit)
+  │   |
+  │   +--> False:
+  │          |
+  │          v
+  │        Get Instigator (from event)
+  │          |
+  │          v
+  │        Cast to EpochRailsCharacter
+  │          |
+  │          v
+  │        Call Function: Sit Player (PlayerCharacter)
+  │          |
+  │          v
+  │        Return true (interaction success)
 ```
 
-##### Function: Sit Player
+**Input**: Instigator (Actor)
+**Return Type**: Boolean
+
+#### Function: Sit Player
+
+**Purpose**: Attach player to seat and enable train controls
+
+**Access**: Private  
+**Pure**: No  
+**Inputs**: 
+- Player (EpochRailsCharacter Reference)
+
+**Implementation:**
 ```
-Sit Player (Input: Player Character)
-  ├─ Set Seated Player = Player Character
-  ├─ Set Is Occupied = true
+Sit Player
   │
-  ├─ Disable Player Input
-  ├─ Attach Player to Sit Position
-  │  └─ Attach Actor to Component (Keep World Position: false)
+  ├── [1] Store Reference
+  │   |
+  │   v
+  │   Set Seated Player = Player
+  │   Set Is Occupied = true
   │
-  ├─ Get Player Camera Manager
-  ├─ Set View Target with Blend
-  │  ├─ Target: Self
-  │  ├─ Blend Time: 0.5s
-  │  └─ Blend Function: Cubic
+  ├── [2] Disable Player Movement
+  │   |
+  │   v
+  │   Player -> Get Controller
+  │   |
+  │   v
+  │   Cast to PlayerController
+  │   |
+  │   v
+  │   Disable Input (Player Controller)
   │
-  ├─ Delay (0.5 seconds)
+  ├── [3] Attach Player to Seat
+  │   |
+  │   v
+  │   Attach Actor to Component
+  │     Inputs:
+  │       - Actor: Seated Player
+  │       - Parent: Sit Position (component)
+  │       - Socket Name: None
+  │       - Location Rule: Snap to Target
+  │       - Rotation Rule: Snap to Target
+  │       - Scale Rule: Keep World
+  │       - Weld Simulated Bodies: false
   │
-  ├─ Enable Control Mode
-  │  ├─ Add Input Mapping (IMC_TrainControl)
-  │  └─ Bind Input Actions
+  ├── [4] Switch Camera
+  │   |
+  │   v
+  │   Get Player Controller
+  │   |
+  │   v
+  │   Get Player Camera Manager
+  │   |
+  │   v
+  │   Set View Target with Blend
+  │     Inputs:
+  │       - New View Target: Self (BP_TrainDriverSeat)
+  │       - Blend Time: 0.5
+  │       - Blend Function: EViewTargetBlendFunction::VTBlend_Cubic
+  │       - Blend Exp: 2.0
+  │       - Lock Outgoing: false
   │
-  └─ Update Interaction Text = "Exit (E)"
+  ├── [5] Wait for Camera Transition
+  │   |
+  │   v
+  │   Delay (0.5 seconds)
+  │
+  ├── [6] Enable Train Controls
+  │   |
+  │   v
+  │   Get Player Controller
+  │   |
+  │   v
+  │   Get Enhanced Input Local Player Subsystem
+  │     Input: Player Controller
+  │   |
+  │   v
+  │   Add Mapping Context
+  │     Inputs:
+  │       - Mapping Context: IMC_TrainControl
+  │       - Priority: 1
+  │       - Options: (default)
+  │   |
+  │   v
+  │   Enable Input (Player Controller)
+  │
+  ├── [7] Start Train
+  │   |
+  │   v
+  │   Owning Train -> Start Train
+  │   |
+  │   v
+  │   Print String ("Train started by player")
+  │
+  └── [8] Update Interaction Text
+      |
+      v
+      Set Interaction Action = "Exit (E)"
 ```
 
-##### Function: Exit Player
+**Key Nodes:**
+- **Attach Actor to Component**: Physically attaches player to seat
+- **Set View Target with Blend**: Smooth camera transition
+- **Add Mapping Context**: Enables train control inputs
+- **Start Train**: Begins train movement via C++ API
+
+#### Function: Exit Player
+
+**Purpose**: Detach player from seat and restore normal controls
+
+**Access**: Private  
+**Pure**: No
+
+**Implementation:**
 ```
 Exit Player
-  ├─ Branch: Has Seated Player?
-  │  └─ False: Return
   │
-  ├─ Disable Control Mode
-  │  ├─ Remove Input Mapping (IMC_TrainControl)
-  │  └─ Unbind Input Actions
+  ├── [0] Validation
+  │   |
+  │   v
+  │   Branch: Seated Player Is Valid?
+  │   |
+  │   +--> False: Return (nothing to exit)
   │
-  ├─ Get Player Camera Manager
-  ├─ Set View Target with Blend
-  │  ├─ Target: Seated Player
-  │  ├─ Blend Time: 0.5s
-  │  └─ Blend Function: Cubic
+  ├── [1] Stop Train
+  │   |
+  │   v
+  │   Set Target Speed = 0.0
+  │   |
+  │   v
+  │   Owning Train -> Set Speed (0.0)
+  │   |
+  │   v
+  │   Print String ("Train stopped by player")
   │
-  ├─ Delay (0.5 seconds)
+  ├── [2] Disable Train Controls
+  │   |
+  │   v
+  │   Get Player Controller (from Seated Player)
+  │   |
+  │   v
+  │   Disable Input (Player Controller)
+  │   |
+  │   v
+  │   Get Enhanced Input Local Player Subsystem
+  │   |
+  │   v
+  │   Remove Mapping Context
+  │     Input: IMC_TrainControl
   │
-  ├─ Detach Player
-  │  └─ Detach from Actor (Keep World Position: true)
+  ├── [3] Restore Camera
+  │   |
+  │   v
+  │   Get Player Camera Manager
+  │   |
+  │   v
+  │   Set View Target with Blend
+  │     Inputs:
+  │       - New View Target: Seated Player
+  │       - Blend Time: 0.5
+  │       - Blend Function: VTBlend_Cubic
   │
-  ├─ Move Player Forward (100 units)
-  │  └─ Set Actor Location (Offset by Forward Vector)
+  ├── [4] Wait for Camera Transition
+  │   |
+  │   v
+  │   Delay (0.5 seconds)
   │
-  ├─ Enable Player Input
+  ├── [5] Detach Player
+  │   |
+  │   v
+  │   Detach from Actor
+  │     Inputs:
+  │       - Location Rule: Keep World
+  │       - Rotation Rule: Keep World
+  │       - Scale Rule: Keep World
   │
-  ├─ Set Seated Player = None
-  ├─ Set Is Occupied = false
-  └─ Update Interaction Text = "Sit"
+  ├── [6] Position Player Safely
+  │   |
+  │   v
+  │   Get Actor Forward Vector (from Self)
+  │   |
+  │   v
+  │   Multiply (Forward Vector * 100.0)
+  │   |
+  │   v
+  │   Get Actor Location (from Seated Player)
+  │   |
+  │   v
+  │   Add (Location + Offset)
+  │   |
+  │   v
+  │   Set Actor Location (Seated Player, New Location, Sweep: true)
+  │
+  ├── [7] Restore Player Input
+  │   |
+  │   v
+  │   Get Controller (from Seated Player)
+  │   |
+  │   v
+  │   Cast to PlayerController
+  │   |
+  │   v
+  │   Enable Input (Player Controller)
+  │
+  ├── [8] Clear State
+  │   |
+  │   v
+  │   Set Seated Player = None
+  │   Set Is Occupied = false
+  │   Set Target Speed = 0.0
+  │   Set Interaction Action = "Sit"
+  │   |
+  │   v
+  │   Print String ("Player exited driver seat")
 ```
 
-##### Input: Exit Seat (IA_ExitSeat)
-```
-Enhanced Input Action: IA_ExitSeat (Started)
-  ├─ Call: Exit Player
-  └─ Stop Train (set target speed to 0)
-```
+**Key Steps:**
+1. Stop train before exit
+2. Remove input context
+3. Restore camera view
+4. Detach player safely
+5. Move player forward 100 units
+6. Restore normal input
 
-### Step 3: Create Train Controller Blueprint
+#### Input Event: Exit Seat
 
-**Blueprint**: `Content/Train/BP_TrainController`  
-**Parent Class**: `Actor`
+**Enhanced Input Action**: IA_ExitSeat
 
-#### Components
-
-- **TrainMesh** (Static Mesh) - Visual representation
-- **DriverSeat** (Child Actor Component) - Instance of BP_TrainDriverSeat
-- **Speedometer** (Text Render) - Debug speed display
-
-#### Variables
+**Event**: Started
 
 ```
-Name                    Type        Default     Description
------------------------------------------------------------------------------
-CurrentSpeed            Float       0.0         Current speed (cm/s)
-TargetSpeed             Float       0.0         Desired speed
-MaxSpeed                Float       2000.0      Maximum forward speed
-MaxReverseSpeed         Float       -500.0      Maximum reverse speed
-Acceleration            Float       100.0       Speed increase rate
-Deceleration            Float       200.0       Speed decrease rate
-BrakeForce              Float       500.0       Emergency brake rate
-bIsReversing            Boolean     false       Reverse mode enabled
-DriverSeat              BP_TrainDriverSeat  None    Seat reference
+IA_ExitSeat (Started)
+  │
+  └── Call Function: Exit Player
 ```
 
-#### Blueprint Events
+**Simple**: Just calls Exit Player function
 
-##### Event BeginPlay
+#### Input Event: Train Throttle
+
+**Enhanced Input Action**: IA_TrainThrottle
+
+**Event**: Triggered
+
 ```
-Event BeginPlay
-  ├─ Get Child Actor (DriverSeat Component)
-  ├─ Cast to BP_TrainDriverSeat
-  └─ Set Driver Seat (reference)
+IA_TrainThrottle (Triggered)
+  │
+  ├── Get Action Value (float)
+  │   |
+  │   v
+  │   Store in: Throttle Input (local variable)
+  │
+  ├── Branch: Throttle Input > 0.1?
+  │   |
+  │   +--> True: [FORWARD ACCELERATION]
+  │   |      |
+  │   |      v
+  │   |    Set Target Speed = Max Control Speed * Throttle Input
+  │   |      |
+  │   |      v
+  │   |    Clamp (Target Speed, 0.0, Max Control Speed)
+  │   |      |
+  │   |      v
+  │   |    Owning Train -> Set Speed (Target Speed)
+  │   |      |
+  │   |      v
+  │   |    Owning Train -> Start Train (if stopped)
+  │   |
+  │   +--> False: Branch: Throttle Input < -0.1?
+  │          |
+  │          +--> True: [BACKWARD/SLOW]
+  │          |      |
+  │          |      v
+  │          |    Get Current Speed (from Owning Train)
+  │          |      |
+  │          |      v
+  │          |    Set Target Speed = Current Speed * 0.7
+  │          |      |
+  │          |      v
+  │          |    Clamp (Target Speed, 0.0, Current Speed)
+  │          |      |
+  │          |      v
+  │          |    Owning Train -> Set Speed (Target Speed)
+  │          |
+  │          +--> False: [COAST/NEUTRAL]
+  │                 |
+  │                 v
+  │               Get Current Speed (from Owning Train)
+  │                 |
+  │                 v
+  │               Set Target Speed = Current Speed * 0.95
+  │                 |
+  │                 v
+  │               Owning Train -> Set Speed (Target Speed)
 ```
 
-##### Event Tick
+**Logic:**
+- **W key (positive)**: Accelerate forward
+- **S key (negative)**: Slow down gradually  
+- **No input**: Coast (natural deceleration)
+
+#### Input Event: Train Brake
+
+**Enhanced Input Action**: IA_TrainBrake
+
+**Event**: Triggered
+
+```
+IA_TrainBrake (Triggered)
+  │
+  ├── Set Target Speed = 0.0
+  │
+  ├── Owning Train -> Stop Train
+  │   |
+  │   v
+  │   Print String ("Emergency brake applied!")
+  │
+  └── [Optional] Play Sound: Brake Sound
+```
+
+**Effect**: Immediate stop using RailsTrain's deceleration system
+
+### Phase 4: Camera Setup
+
+#### Camera Component
+
+The seat itself acts as the view target. Add Camera component (optional):
+
+**Option A: Use CameraPosition Scene Component (Recommended)**
+- CameraPosition determines view angle
+- No Camera component needed
+- Player Camera Manager handles view
+
+**Option B: Add Camera Component**
+1. Add Component → Camera
+2. Attach to CameraPosition
+3. Set as default camera
+
+**CameraPosition Location Examples:**
+
+```
+// Third Person View (behind seat)
+Location: (-250, 0, 180)
+Rotation: (-20, 0, 0)
+
+// First Person View (at seat)
+Location: (0, 0, 120)
+Rotation: (0, 0, 0)
+
+// Overhead View
+Location: (0, 0, 400)
+Rotation: (-60, 0, 0)
+```
+
+### Phase 5: Integration with Train
+
+#### Method A: Child Actor Component (Recommended)
+
+**In your train Blueprint (child of RailsTrain):**
+
+1. Open train Blueprint
+2. Add Component → Child Actor
+3. Name: "DriverSeat"
+4. Details Panel:
+   - Child Actor Class: BP_TrainDriverSeat
+5. Position in viewport:
+   - Location: Where driver sits (e.g., front of train)
+   - Rotation: Facing forward
+6. Compile and Save
+
+**Benefits:**
+- Seat automatically moves with train
+- Owning Train reference auto-set in BeginPlay
+- Easy to position in editor
+
+#### Method B: Manual Attachment
+
+**In level:**
+
+1. Place BP_TrainDriverSeat in level
+2. Place your train (child of RailsTrain)
+3. World Outliner:
+   - Drag BP_TrainDriverSeat onto train
+   - Creates parent-child relationship
+4. Position seat in viewport
+
+**Note**: Verify BeginPlay finds Owning Train correctly
+
+### Phase 6: Testing and Debugging
+
+#### Debug Helpers
+
+**Add Debug Display (Optional):**
+
+In BP_TrainDriverSeat, enable Tick and add:
+
 ```
 Event Tick
-  ├─ Update Speed
-  │  ├─ Branch: Current Speed != Target Speed
-  │  │  ├─ True:
-  │  │  │   ├─ Calculate Interpolation Speed
-  │  │  │   │  └─ Select: Accelerating? Use Acceleration : Use Deceleration
-  │  │  │   ├─ FInterp To (Current → Target, Delta Time, Interp Speed)
-  │  │  │   └─ Set Current Speed
-  │  │  └─ False: Continue
   │
-  ├─ Apply Movement
-  │  ├─ Get Forward Vector
-  │  ├─ Multiply: Forward Vector × Current Speed × Delta Time
-  │  ├─ Add Actor World Offset (Delta Movement)
-  │  └─ Set Sweep: true (for collision)
-  │
-  └─ Update Debug Display
-     └─ Set Speedometer Text (format: "{0} km/h", Current Speed / 27.78)
+  ├── Branch: Is Occupied?
+  │   |
+  │   +--> True:
+  │          |
+  │          v
+  │        Get Current Speed (from Owning Train)
+  │          |
+  │          v
+  │        Divide by 27.78 (convert to km/h)
+  │          |
+  │          v
+  │        Format Text: "{0} km/h"
+  │          |
+  │          v
+  │        Get Actor Location + (0, 0, 200)
+  │          |
+  │          v
+  │        Draw Debug String
+  │          Inputs:
+  │            - Text: Speed Text
+  │            - Location: Above Seat
+  │            - Color: Green
+  │            - Duration: 0.0
 ```
 
-##### Input: Train Throttle (IA_TrainThrottle)
-```
-Enhanced Input Action: IA_TrainThrottle (Triggered)
-  ├─ Get Action Value (float)
-  │
-  ├─ Branch: Value > 0.1
-  │  ├─ True: Accelerate Forward
-  │  │   ├─ Branch: Is Reversing?
-  │  │   │  ├─ True: Set Is Reversing = false
-  │  │   │  └─ False: Continue
-  │  │   └─ Set Target Speed = Max Speed × Value
-  │  │
-  │  ├─ Else Branch: Value < -0.1
-  │  │   ├─ True: Accelerate Backward
-  │  │   │   ├─ Set Is Reversing = true
-  │  │   │   └─ Set Target Speed = Max Reverse Speed × Abs(Value)
-  │  │   └─ False: Coast (no change)
-  │  │
-  │  └─ Else: Neutral
-  │      └─ Set Target Speed = 0
-```
+#### Testing Checklist
 
-##### Input: Train Brake (IA_TrainBrake)
-```
-Enhanced Input Action: IA_TrainBrake (Triggered)
-  ├─ Set Target Speed = 0
-  ├─ Apply Emergency Brake
-  │  ├─ Calculate: Current Speed - (Brake Force × Delta Time)
-  │  └─ Set Current Speed (clamped to 0)
-  └─ Play Brake Sound
-```
+**Pre-Flight:**
+- [ ] BP_TrainDriverSeat parent is InteractableActor
+- [ ] Seat has SeatMesh with Visibility collision
+- [ ] SitPosition and CameraPosition components exist
+- [ ] Input Actions created (3 actions)
+- [ ] IMC_TrainControl created with mappings
+- [ ] Seat is child of train (Child Actor or attached)
 
-##### Input: Toggle Reverse (IA_TrainReverse)
-```
-Enhanced Input Action: IA_TrainReverse (Started)
-  ├─ Branch: Current Speed < 50
-  │  ├─ True: Can toggle
-  │  │   ├─ Toggle: Is Reversing
-  │  │   ├─ Set Target Speed = 0
-  │  │   └─ Play Toggle Sound
-  │  └─ False: Cannot toggle while moving
-  │      └─ Display Warning ("Slow down first")
-```
+**Basic Functionality:**
+- [ ] Can walk to seat
+- [ ] Interaction prompt appears ("Sit")
+- [ ] E key sits player down
+- [ ] Camera transitions smoothly (0.5s)
+- [ ] Player is attached to seat
+- [ ] Train starts moving
 
-##### Function: Set Control Inputs Enabled
-```
-Set Control Inputs Enabled (Input: Enabled)
-  ├─ Branch: Enabled?
-  │  ├─ True: Enable
-  │  │   ├─ Get Player Controller
-  │  │   └─ Enable Input (Player Controller)
-  │  └─ False: Disable
-  │      ├─ Get Player Controller
-  │      └─ Disable Input (Player Controller)
-```
+**Controls:**
+- [ ] W key increases speed
+- [ ] S key decreases speed  
+- [ ] Space key stops train
+- [ ] No input causes coasting
+- [ ] Speed is clamped to MaxControlSpeed
 
-### Step 4: Create Driver HUD Widget
+**Exit:**
+- [ ] E key exits seat
+- [ ] Train stops (speed → 0)
+- [ ] Camera returns to player
+- [ ] Player detaches from seat
+- [ ] Player positioned 100 units forward
+- [ ] Normal controls restored
 
-**Widget Blueprint**: `Content/Train/UI/WBP_TrainHUD`
+**Edge Cases:**
+- [ ] Cannot sit when occupied
+- [ ] Interaction text changes ("Occupied")
+- [ ] Seat works with train on spline
+- [ ] Player stays attached during turns
+- [ ] Exit works at any speed
 
-#### Widget Structure
+#### Common Issues
 
-```
-Canvas Panel
-├─ Vertical Box (Driver Info)
-│  ├─ Text Block: "Speed"
-│  ├─ Progress Bar: Speed Indicator
-│  ├─ Text Block: Speed Value (km/h)
-│  └─ Text Block: Mode ("FORWARD" / "REVERSE")
-│
-└─ Vertical Box (Controls Help)
-   ├─ Text Block: "W/S - Throttle"
-   ├─ Text Block: "Space - Brake"
-   ├─ Text Block: "R - Toggle Reverse"
-   └─ Text Block: "E - Exit Seat"
-```
+**Issue 1: Owning Train is None**
 
-#### Widget Variables
+**Symptoms:**
+- Print error in BeginPlay
+- Controls don't affect train
 
-```
-Name                Type                    Description
-------------------------------------------------------------------------
-OwningTrain         BP_TrainController      Reference to train
-SpeedText           Text Block              Speed display
-SpeedBar            Progress Bar            Visual speed indicator
-ModeText            Text Block              Forward/Reverse indicator
-```
+**Solutions:**
+1. Verify seat is child of RailsTrain actor
+2. Check Get Owner returns RailsTrain
+3. Use Child Actor Component method
+4. Check BeginPlay executes (add Print String)
 
-#### Widget Events
+**Issue 2: Camera doesn't move**
 
-##### Event Construct
-```
-Event Construct
-  ├─ Bind to Train Controller
-  │  └─ Set Owning Train (from player or level)
-  └─ Start Update Timer
-     └─ Set Timer by Function Name ("UpdateHUD", 0.1s, looping: true)
-```
+**Symptoms:**
+- Camera stays on player
+- No camera transition
 
-##### Function: Update HUD
-```
-Update HUD
-  ├─ Get Current Speed (from Owning Train)
-  │
-  ├─ Convert to km/h
-  │  └─ Divide: Speed ÷ 27.78
-  │
-  ├─ Update Speed Text
-  │  └─ Set Text: Format("{0} km/h", Speed)
-  │
-  ├─ Update Speed Bar
-  │  ├─ Calculate Percent: Abs(Speed) ÷ Max Speed
-  │  └─ Set Percent (0.0 to 1.0)
-  │
-  └─ Update Mode Text
-     ├─ Branch: Is Reversing?
-     │  ├─ True: Set Text = "REVERSE" (Red)
-     │  └─ False: Set Text = "FORWARD" (Green)
-```
+**Solutions:**
+1. Verify CameraPosition component exists
+2. Check Set View Target is called
+3. Ensure blend time > 0
+4. Test with immediate blend (time = 0.01)
+5. Check Player Camera Manager is valid
 
-### Step 5: Create Input Mapping Context
+**Issue 3: Player falls through train**
 
-**Asset**: `Content/Input/IMC_TrainControl`  
-**Type**: Input Mapping Context
+**Symptoms:**
+- Player detaches during movement
+- Player positioned below train
 
-Add these mappings:
-1. **IA_ExitSeat** → Key: E
-2. **IA_TrainThrottle** → Keys: W (+1.0), S (-1.0)
-3. **IA_TrainBrake** → Key: Space
-4. **IA_TrainReverse** → Key: R
+**Solutions:**
+1. Check PlatformMesh in RailsTrain has collision
+2. Verify SitPosition is above platform surface
+3. Check Attach Actor uses "Snap to Target"
+4. Ensure RailsTrain PlatformMesh collision is enabled
 
-### Step 6: Setup Train in Level
+**Issue 4: Controls don't work**
 
-1. Place `BP_TrainController` in your level
-2. Position the train on rails/tracks
-3. The Driver Seat will be automatically created as a child
-4. Adjust seat position in the Train blueprint if needed
+**Symptoms:**
+- W/S/Space do nothing
+- Train doesn't respond
 
-#### Positioning Seat and Camera
+**Solutions:**
+1. Check IMC_TrainControl is added in Sit Player
+2. Verify Input Actions are bound (compile Blueprint)
+3. Ensure Enable Input is called
+4. Check Input Mapping Context priority (should be 1+)
+5. Test with Print String in input events
 
-In `BP_TrainController` viewport:
-1. Select **DriverSeat** child actor component
-2. Position it where the driver should sit
-3. Inside the seat, position **SitPosition** (player attach point)
-4. Position **CameraPosition** for optimal view
+**Issue 5: Can't exit seat**
+
+**Symptoms:**
+- E key doesn't work
+- Player stuck in seat
+
+**Solutions:**
+1. Verify IA_ExitSeat is in IMC_TrainControl
+2. Check Exit Player function is bound
+3. Test E key with Print String
+4. Ensure input is not disabled
+5. Check Seated Player is valid in Exit function
+
+**Issue 6: Train doesn't stop on exit**
+
+**Symptoms:**
+- Train continues moving
+- Speed doesn't reset
+
+**Solutions:**
+1. Check Stop Train is called in Exit Player
+2. Verify Set Speed(0) is called
+3. Ensure Owning Train reference is valid
+4. Test with Print String before API call
 
 ## Advanced Features
 
-### Feature 1: Collision Detection
+### Feature: Speed Limit Zones
 
-In `BP_TrainController` Event Tick:
-```
-Add Actor World Offset (with Sweep: true)
-  └─ Hit Result
-     ├─ Branch: Blocking Hit?
-     │  ├─ True: Collision detected
-     │  │   ├─ Set Current Speed = 0
-     │  │   ├─ Set Target Speed = 0
-     │  │   └─ Play Crash Sound
-     │  └─ False: Continue
-```
+**Create**: BP_SpeedLimitZone
 
-### Feature 2: Speed Limits
+**Components:**
+- Box Trigger
 
-Add speed limit zones:
+**Variables:**
+- Speed Limit (Float) = 500.0
+
+**Events:**
 ```
-On Overlap Begin (Trigger Volume)
-  ├─ Get Other Actor
-  ├─ Cast to BP_TrainController
-  ├─ Set Max Speed = Zone Speed Limit
-  └─ Display Speed Limit Sign
+On Actor Begin Overlap
+  ├── Cast to RailsTrain
+  ├── Set Max Speed = Speed Limit
+  └── Display Warning: "Speed Limit: {limit} km/h"
+
+On Actor End Overlap
+  ├── Cast to RailsTrain  
+  └── Set Max Speed = Original Max Speed
 ```
 
-### Feature 3: Station Stops
+### Feature: Train Stations
 
-Create `BP_TrainStation` actor:
-```
-On Train Overlap
-  ├─ Check: Is Player Seated?
-  │  └─ True:
-  │     ├─ Display: "Press E to stop at station"
-  │     └─ If E pressed:
-  │        ├─ Set Train Target Speed = 0
-  │        ├─ Wait for stop
-  │        └─ Open doors
-```
+**Create**: BP_TrainStation
 
-### Feature 4: Momentum Physics
+**Components:**
+- Trigger Box
+- Station Mesh
 
-For more realistic physics:
+**Variables:**
+- Station Name (String)
+- Stop Duration (Float) = 10.0
+
+**Events:**
 ```
-Event Tick (in BP_TrainController)
-  ├─ Calculate Momentum
-  │  ├─ Apply acceleration based on mass
-  │  ├─ Apply friction/resistance
-  │  └─ Apply slope gravity
-  │
-  └─ Update Current Speed (with momentum)
+On Actor Begin Overlap
+  ├── Cast to RailsTrain
+  ├── Check: Is Character On Train? (has seated player)
+  ├── Display: "Press F to stop at {Station Name}"
+  └── Bind F key:
+     ├── Call: Stop Train
+     ├── Wait: Stop Duration
+     └── Allow departure
 ```
 
-### Feature 5: Seat Animations
+### Feature: HUD Widget
 
-In `BP_TrainDriverSeat`:
+**Create**: WBP_TrainDriverHUD
+
+**Parent**: User Widget
+
+**Widgets:**
+- Text: Speed (km/h)
+- Progress Bar: Speed indicator  
+- Text: Controls help
+
+**Variables:**
+- Owning Seat (BP_TrainDriverSeat Reference)
+
+**Functions:**
 ```
-Sit Player
-  └─ After attach:
-     ├─ Play Sitting Animation
-     └─ Set Player Mesh Relative Location/Rotation
+Event Construct
+  └── Set Timer by Function Name ("UpdateHUD", 0.1, looping)
+
+UpdateHUD
+  ├── Get Owning Seat -> Owning Train
+  ├── Get Current Speed
+  ├── Convert to km/h
+  ├── Update Text
+  └── Update Progress Bar
 ```
 
-## Debugging
+**Integration:**
+- In Sit Player: Create Widget → Add to Viewport
+- In Exit Player: Remove from Parent
 
-### Enable Visual Debugging
+## Performance Considerations
 
-In `BP_TrainController`:
-1. Add debug sphere at driver position
-2. Draw debug line showing movement direction
-3. Print speed to screen
+### Optimization Tips
 
-```
-Event Tick
-  └─ Draw Debug String
-     ├─ Text: "Speed: {0} km/h"
-     ├─ Location: Above train
-     └─ Color: Speed-based (Green → Yellow → Red)
-```
+1. **Disable Tick**: Seat doesn't need Tick unless debugging
+2. **HUD Updates**: Use timer (0.1s) not Tick
+3. **Input Events**: Already optimized (event-driven)
+4. **Camera Blending**: Native UE function, efficient
 
-### Common Issues
+### Memory Usage
 
-**Issue**: Player falls through seat
-- **Fix**: Ensure SitPosition is above seat mesh
-- **Fix**: Set collision on seat to BlockAll
+- **Seat Blueprint**: ~50 KB
+- **Input Assets**: ~10 KB each
+- **Runtime**: Minimal (single reference, no physics)
 
-**Issue**: Camera clips through train
-- **Fix**: Position CameraPosition away from walls
-- **Fix**: Adjust camera collision settings
+## Multiplayer Considerations
 
-**Issue**: Can't exit seat
-- **Fix**: Verify IA_ExitSeat input binding
-- **Fix**: Check Input Mapping Context priority
+**Current Implementation**: Single player only
 
-**Issue**: Train doesn't move
-- **Fix**: Check Current Speed in debugger
-- **Fix**: Verify Tick is enabled
-- **Fix**: Check for collision blocking movement
+**For Multiplayer:**
 
-**Issue**: Controls don't respond
-- **Fix**: Verify Input Mapping Context is added
-- **Fix**: Check Player Controller has input enabled
-- **Fix**: Verify Input Actions are bound correctly
+1. **Replicate Seat State:**
+   - Mark bIsOccupied as Replicated
+   - Replicate Seated Player reference
 
-## Performance Optimization
+2. **Server Authority:**
+   - Sit/Exit must be Server RPC
+   - Speed control via Server RPC
 
-### Best Practices
+3. **Client Prediction:**
+   - Smooth camera on clients
+   - Interpolate speed changes
 
-1. **Update Frequency**
-   - HUD: Update at 10 Hz (0.1s timer)
-   - Physics: Use Event Tick
-   - Input: Use Enhanced Input (event-driven)
+## Conclusion
 
-2. **Collision**
-   - Use simple collision on train mesh
-   - Sweep only when moving
-   - Cache collision results
+You now have a complete system to control your existing RailsTrain using Blueprint-only driver seat. The system:
 
-3. **UI**
-   - Update only when values change
-   - Use binding sparingly
-   - Pool widget instances
+- ✅ Uses existing RailsTrain C++ class
+- ✅ No C++ modifications required
+- ✅ Integrates with Interaction System
+- ✅ Smooth camera transitions
+- ✅ Intuitive controls
+- ✅ Easy to extend
 
-## Testing Checklist
-
-- [ ] Can interact with seat when empty
-- [ ] Cannot interact when occupied
-- [ ] Camera transitions smoothly
-- [ ] Controls respond correctly
-- [ ] Speed limits are respected
-- [ ] Brake stops the train
-- [ ] Reverse toggle works only when slow
-- [ ] Exit returns player safely
-- [ ] HUD displays correct information
-- [ ] Collision detection works
-- [ ] Multiple trains don't interfere
-
-## Next Steps
-
-1. Add sounds (engine, brake, ambient)
-2. Create particle effects (steam, smoke)
-3. Implement multiplayer (train conductor role)
-4. Add train damage system
-5. Create railway signaling system
-6. Design conductor's cabin interior
-7. Add passenger cars with seats
-
-## Additional Resources
-
-- **Main Interaction System**: `README_INTERACTION.md`
-- **Enhanced Input**: Unreal Engine documentation
-- **Blueprint Best Practices**: `Documentation/BlueprintGuidelines.md`
+**Next Steps:**
+1. Create BP_TrainDriverSeat
+2. Add to your train
+3. Create Input Actions
+4. Test in PIE
+5. Add HUD (optional)
+6. Create stations (optional)
 
 ---
 
