@@ -10,6 +10,7 @@
 class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
+class UInteractionComponent;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -31,6 +32,11 @@ class ARailsPlayerCharacter : public ACharacter {
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components",
             meta = (AllowPrivateAccess = "true"))
   UCameraComponent *FollowCamera;
+
+  /** Interaction component for detecting and interacting with objects */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components",
+            meta = (AllowPrivateAccess = "true"))
+  UInteractionComponent *InteractionComponent;
 
 protected:
   // ========== Camera Settings ==========
@@ -90,6 +96,10 @@ protected:
   UPROPERTY(EditAnywhere, Category = "Input")
   UInputAction *SprintAction;
 
+  /** Interact Input Action */
+  UPROPERTY(EditAnywhere, Category = "Input")
+  UInputAction *InteractAction;
+
 public:
   // ========== Animation Variables (PUBLIC for AnimBP access) ==========
 
@@ -143,6 +153,9 @@ protected:
   /** Called when sprint is stopped */
   void StopSprint(const FInputActionValue &Value);
 
+  /** Called when interact button is pressed */
+  void Interact(const FInputActionValue &Value);
+
 public:
   /** Dynamically change camera socket at runtime */
   UFUNCTION(BlueprintCallable, Category = "Camera")
@@ -176,6 +189,10 @@ public:
   UFUNCTION(BlueprintCallable, Category = "Input")
   virtual void DoJumpEnd();
 
+  /** Attempt to interact with the object in focus */
+  UFUNCTION(BlueprintCallable, Category = "Interaction")
+  virtual void DoInteract();
+
 public:
   /** Returns CameraBoom subobject **/
   FORCEINLINE class USpringArmComponent *GetCameraBoom() const {
@@ -185,6 +202,11 @@ public:
   /** Returns FollowCamera subobject **/
   FORCEINLINE class UCameraComponent *GetFollowCamera() const {
     return FollowCamera;
+  }
+
+  /** Returns InteractionComponent subobject **/
+  FORCEINLINE class UInteractionComponent *GetInteractionComponent() const {
+    return InteractionComponent;
   }
 
   /** Returns whether character is sprinting */
