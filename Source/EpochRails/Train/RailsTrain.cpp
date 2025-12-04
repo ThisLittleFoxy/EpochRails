@@ -4,6 +4,7 @@
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "RailsSplinePath.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "DrawDebugHelpers.h"
@@ -26,6 +27,10 @@ ARailsTrain::ARailsTrain() {
   PlatformMesh->SetupAttachment(TrainRoot);
   PlatformMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
   PlatformMesh->SetCollisionProfileName(TEXT("OverlapAll"));
+  
+  // CRITICAL: Enable simulated movement for proper character attachment
+  PlatformMesh->SetSimulatePhysics(false);
+  PlatformMesh->SetEnableGravity(false);
 
   // Create boarding zone
   BoardingZone = CreateDefaultSubobject<UBoxComponent>(TEXT("BoardingZone"));
@@ -186,8 +191,9 @@ void ARailsTrain::MoveToDistance(float Distance) {
   FRotator NewRotation = CachedSplineComponent->GetRotationAtDistanceAlongSpline(
       Distance, ESplineCoordinateSpace::World);
 
-  // Set actor transform
-  SetActorLocationAndRotation(NewLocation, NewRotation);
+  // Use sweep to prevent characters from being ejected
+  // This allows physics to properly update attached actors
+  SetActorLocationAndRotation(NewLocation, NewRotation, true);
 }
 
 float ARailsTrain::GetTargetSpeed() const {
@@ -315,7 +321,8 @@ void ARailsTrain::DrawPhysicsDebug() {
       TEXT("Status:\n")
       TEXT("  Wheel Slip: %s\n")
       TEXT("  Stopping Distance: %.0f m\n")
-      TEXT("  Distance Traveled: %.0f m"),
+      TEXT("  Distance Traveled: %.0f m\n")
+      TEXT("  Passengers: %d"),
       PhysicsComponent->GetVelocityKmh(),
       PhysicsComponent->GetVelocityMs(),
       PhysicsComponent->PhysicsState.Acceleration,
@@ -333,7 +340,8 @@ void ARailsTrain::DrawPhysicsDebug() {
       SmoothedCurvature,
       PhysicsComponent->PhysicsState.bIsWheelSlipping ? TEXT("YES") : TEXT("NO"),
       PhysicsComponent->CalculateStoppingDistance(),
-      PhysicsComponent->PhysicsState.DistanceTraveled
+      PhysicsComponent->PhysicsState.DistanceTraveled,
+      PassengersOnBoard.Num()
   );
 
   // Display on screen
@@ -369,9 +377,31 @@ void ARailsTrain::OnBoardingZoneBeginOverlap(
   if (Character && !PassengersOnBoard.Contains(Character)) {
     PassengersOnBoard.Add(Character);
     
-    // Attach character to platform
-    Character->AttachToComponent(PlatformMesh,
-                                FAttachmentTransformRules::KeepWorldTransform);
+    // CRITICAL FIX: Use proper attachment rules for moving platforms
+    // KeepRelativeTransform ensures smooth attachment without ejection
+    FAttachmentTransformRules AttachRules(
+        EAttachmentRule::KeepWorld,    // Location: Keep world position initially
+        EAttachmentRule::KeepWorld,    // Rotation: Keep world rotation initially
+        EAttachmentRule::KeepWorld,    // Scale: Keep world scale
+        true                           // bWeldSimulatedBodies: Important for physics
+    );
+    
+    Character->AttachToComponent(PlatformMesh, AttachRules);
+    
+    // CRITICAL: Update character movement component to handle moving base
+    UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement();
+    if (MovementComp) {
+      // Enable moving base updates
+      MovementComp->SetMovementMode(MOVE_Walking);
+      
+      // IMPORTANT: These settings prevent ejection
+      MovementComp->bAlwaysCheckFloor = true;
+      MovementComp->bUseFlatBaseForFloorChecks = true;
+      
+      // This is critical for smooth movement on moving platforms
+      MovementComp->PerchRadiusThreshold = 0.0f;
+      MovementComp->PerchAdditionalHeight = 0.0f;
+    }
   }
 }
 
@@ -383,8 +413,22 @@ void ARailsTrain::OnBoardingZoneEndOverlap(
   if (Character && PassengersOnBoard.Contains(Character)) {
     PassengersOnBoard.Remove(Character);
     
-    // Detach character from platform
-    Character->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+    // Proper detachment
+    FDetachmentTransformRules DetachRules(
+        EDetachmentRule::KeepWorld,    // Keep world position
+        EDetachmentRule::KeepWorld,    // Keep world rotation
+        EDetachmentRule::KeepWorld,    // Keep world scale
+        true                           // bCallModify
+    );
+    
+    Character->DetachFromActor(DetachRules);
+    
+    // Restore character movement settings
+    UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement();
+    if (MovementComp) {
+      MovementComp->bAlwaysCheckFloor = true;
+      MovementComp->bUseFlatBaseForFloorChecks = false;
+    }
   }
 }
 
