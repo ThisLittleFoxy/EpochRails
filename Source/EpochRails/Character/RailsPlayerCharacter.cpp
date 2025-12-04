@@ -11,8 +11,11 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "InputActionValue.h"
-#include "Interaction/InteractionComponent.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Train/RailsTrain.h"
+#include "Interaction/InteractionComponent.h"
+#include "Interaction/RailsTrainSeat.h"  // путь может быть другим
+#include "Interaction/InteractableInterface.h"
 
 ARailsPlayerCharacter::ARailsPlayerCharacter() {
   // Set this character to call Tick() every frame
@@ -227,11 +230,40 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
     // Interacting
     if (InteractAction) {
       EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started,
-                                         this, &ARailsPlayerCharacter::Interact);
+                                         this,
+                                         &ARailsPlayerCharacter::Interact);
       UE_LOG(LogEpochRails, Log, TEXT("Interact action bound successfully"));
     } else {
       UE_LOG(LogEpochRails, Warning,
              TEXT("InteractAction is NULL! Please assign it in Blueprint."));
+    }
+
+    // Train Control - Throttle
+    if (ThrottleAction) {
+      EnhancedInputComponent->BindAction(
+          ThrottleAction, ETriggerEvent::Triggered, this,
+          &ARailsPlayerCharacter::OnThrottleInput);
+      EnhancedInputComponent->BindAction(
+          ThrottleAction, ETriggerEvent::Completed, this,
+          &ARailsPlayerCharacter::OnThrottleInput);
+      UE_LOG(LogEpochRails, Log, TEXT("Throttle action bound successfully"));
+    } else {
+      UE_LOG(LogEpochRails, Warning,
+             TEXT("ThrottleAction is NULL! Please assign it in Blueprint."));
+    }
+
+    // Train Control - Brake
+    if (BrakeAction) {
+      EnhancedInputComponent->BindAction(BrakeAction, ETriggerEvent::Triggered,
+                                         this,
+                                         &ARailsPlayerCharacter::OnBrakeInput);
+      EnhancedInputComponent->BindAction(BrakeAction, ETriggerEvent::Completed,
+                                         this,
+                                         &ARailsPlayerCharacter::OnBrakeInput);
+      UE_LOG(LogEpochRails, Log, TEXT("Brake action bound successfully"));
+    } else {
+      UE_LOG(LogEpochRails, Warning,
+             TEXT("BrakeAction is NULL! Please assign it in Blueprint."));
     }
   } else {
     UE_LOG(LogEpochRails, Error,
@@ -269,12 +301,22 @@ void ARailsPlayerCharacter::DoStopSprint() {
 }
 
 void ARailsPlayerCharacter::DoInteract() {
+  // Priority 1: If sitting in a seat, exit it
+  if (CurrentSeat) {
+    // Use Execute_ prefix for interface functions
+    IInteractableInterface::Execute_OnInteract(CurrentSeat, this);
+    return;
+  }
+
+  // Priority 2: Normal interaction with world objects
   if (InteractionComponent) {
     bool bSuccess = InteractionComponent->TryInteract();
     UE_LOG(LogEpochRails, Log, TEXT("Interaction attempt: %s"),
            bSuccess ? TEXT("Success") : TEXT("Failed"));
   }
 }
+
+
 
 void ARailsPlayerCharacter::Move(const FInputActionValue &Value) {
   FVector2D MovementVector = Value.Get<FVector2D>();
@@ -311,3 +353,21 @@ void ARailsPlayerCharacter::DoLook(float Yaw, float Pitch) {
 void ARailsPlayerCharacter::DoJumpStart() { Jump(); }
 
 void ARailsPlayerCharacter::DoJumpEnd() { StopJumping(); }
+
+void ARailsPlayerCharacter::OnThrottleInput(const FInputActionValue &Value) {
+  if (ControlledTrain) {
+    float ThrottleValue = Value.Get<float>();
+    ControlledTrain->ApplyThrottle(ThrottleValue);
+
+    UE_LOG(LogEpochRails, Verbose, TEXT("Throttle input: %f"), ThrottleValue);
+  }
+}
+
+void ARailsPlayerCharacter::OnBrakeInput(const FInputActionValue &Value) {
+  if (ControlledTrain) {
+    float BrakeValue = Value.Get<float>();
+    ControlledTrain->ApplyBrake(BrakeValue);
+
+    UE_LOG(LogEpochRails, Verbose, TEXT("Brake input: %f"), BrakeValue);
+  }
+}

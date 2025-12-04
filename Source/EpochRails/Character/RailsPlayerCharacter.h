@@ -11,6 +11,8 @@ class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
 class UInteractionComponent;
+class ARailsTrain;     // уже есть
+class ARailsTrainSeat; // добавьте эту строку если её нет
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -100,6 +102,29 @@ protected:
   UPROPERTY(EditAnywhere, Category = "Input")
   UInputAction *InteractAction;
 
+  /** Called when player applies throttle input */
+  UFUNCTION()
+  void OnThrottleInput(const FInputActionValue &Value);
+
+  /** Called when player applies brake input */
+  UFUNCTION()
+  void OnBrakeInput(const FInputActionValue &Value);
+
+  /** Input Action for train throttle control */
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|Train")
+  class UInputAction *ThrottleAction;
+
+  /** Input Action for train brake control */
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|Train")
+  class UInputAction *BrakeAction;
+
+  UPROPERTY(BlueprintReadOnly, Category = "Train")
+  ARailsTrain *ControlledTrain;
+
+      /** Seat player is currently sitting in */
+  UPROPERTY(BlueprintReadOnly, Category = "Train")
+  ARailsTrainSeat *CurrentSeat;
+
 public:
   // ========== Animation Variables (PUBLIC for AnimBP access) ==========
 
@@ -118,6 +143,16 @@ public:
   /** Is the character in the air? (for Animation Blueprint) */
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
   bool bIsInAir = false;
+
+  UFUNCTION(BlueprintCallable, Category = "Train")
+  void SetControlledTrain(ARailsTrain *Train) { ControlledTrain = Train; }
+
+  UFUNCTION(BlueprintPure, Category = "Train")
+  ARailsTrain *GetControlledTrain() const { return ControlledTrain; }
+
+  UFUNCTION(BlueprintCallable, Category = "Train")
+  void SetCurrentSeat(ARailsTrainSeat *Seat) { CurrentSeat = Seat; }
+
 
 public:
   /** Constructor */

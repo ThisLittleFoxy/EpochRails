@@ -92,6 +92,14 @@ protected:
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
   TArray<class ACharacter *> PassengersOnBoard;
 
+      /** Current throttle position (-1.0 to 1.0) */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
+  float CurrentThrottle = 0.0f;
+
+  /** Current brake position (0.0 to 1.0) */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
+  float CurrentBrake = 0.0f;
+
   // ========== Lifecycle ==========
 
   virtual void BeginPlay() override;
@@ -156,4 +164,16 @@ public:
   /** Get all passengers */
   UFUNCTION(BlueprintPure, Category = "Train Control")
   TArray<ACharacter *> GetPassengers() const { return PassengersOnBoard; }
+
+      /** Apply throttle input (-1.0 to 1.0) */
+  UFUNCTION(BlueprintCallable, Category = "Train Control")
+  void ApplyThrottle(float ThrottleValue);
+
+  /** Apply brake input (0.0 to 1.0) */
+  UFUNCTION(BlueprintCallable, Category = "Train Control")
+  void ApplyBrake(float BrakeValue);
+
+  /** Get current throttle position */
+  UFUNCTION(BlueprintPure, Category = "Train Control")
+  float GetThrottlePosition() const { return CurrentThrottle; }
 };

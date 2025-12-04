@@ -83,24 +83,34 @@ void ARailsTrain::UpdateTrainMovement(float DeltaTime) {
 
   // Interpolate current speed towards target speed
   if (FMath::Abs(CurrentSpeed - TargetSpeed) > 1.0f) {
-    float AccelRate =
-        (CurrentSpeed < TargetSpeed) ? AccelerationRate : DecelerationRate;
+    float AccelRate = (FMath::Abs(CurrentSpeed) < FMath::Abs(TargetSpeed))
+                          ? AccelerationRate
+                          : DecelerationRate;
     CurrentSpeed = FMath::FInterpTo(CurrentSpeed, TargetSpeed, DeltaTime,
                                     AccelRate / 100.0f);
   } else {
     CurrentSpeed = TargetSpeed;
   }
 
-  // Update distance along spline
+  // Update distance along spline (can go negative for reverse)
   CurrentDistance += CurrentSpeed * DeltaTime;
 
-  // Handle looping
+  // Handle looping/boundaries
   if (CurrentDistance >= SplineLength) {
     if (bLoopPath) {
       CurrentDistance = FMath::Fmod(CurrentDistance, SplineLength);
     } else {
       CurrentDistance = SplineLength;
       StopTrain();
+    }
+  } else if (CurrentDistance < 0.0f) // Handle reverse out of bounds
+  {
+    if (bLoopPath) {
+      CurrentDistance = SplineLength + CurrentDistance;
+    } else {
+      CurrentDistance = 0.0f;
+      CurrentSpeed = 0.0f;
+      TrainState = ETrainState::Stopped;
     }
   }
 
@@ -126,18 +136,36 @@ void ARailsTrain::MoveToDistance(float Distance) {
   SetActorLocationAndRotation(NewLocation, NewRotation);
 }
 
+void ARailsTrain::ApplyThrottle(float ThrottleValue) {
+  CurrentThrottle = FMath::Clamp(ThrottleValue, -1.0f, 1.0f);
+
+  // Update train state based on throttle
+  if (FMath::Abs(CurrentThrottle) > 0.01f) {
+    TrainState = ETrainState::Accelerating;
+  } else if (CurrentBrake > 0.01f) {
+    TrainState = ETrainState::Decelerating;
+  } else {
+    TrainState = ETrainState::Moving;
+  }
+}
+
+void ARailsTrain::ApplyBrake(float BrakeValue) {
+  CurrentBrake = FMath::Clamp(BrakeValue, 0.0f, 1.0f);
+
+  if (CurrentBrake > 0.01f) {
+    TrainState = ETrainState::Decelerating;
+  }
+}
+
+// Update GetTargetSpeed function
 float ARailsTrain::GetTargetSpeed() const {
-  switch (TrainState) {
-  case ETrainState::Stopped:
-    return 0.0f;
-  case ETrainState::Moving:
-  case ETrainState::Accelerating:
-    return MaxSpeed;
-  case ETrainState::Decelerating:
-    return 0.0f;
-  default:
+  // If braking, reduce speed
+  if (CurrentBrake > 0.01f) {
     return 0.0f;
   }
+
+  // Apply throttle to max speed (preserve sign for reverse)
+  return MaxSpeed * CurrentThrottle; // Убрали FMath::Abs()!
 }
 
 void ARailsTrain::OnBoardingZoneBeginOverlap(
