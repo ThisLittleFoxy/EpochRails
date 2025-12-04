@@ -25,13 +25,12 @@ ARailsTrain::ARailsTrain() {
   // Create platform mesh
   PlatformMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlatformMesh"));
   PlatformMesh->SetupAttachment(TrainRoot);
-  PlatformMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-  PlatformMesh->SetCollisionProfileName(TEXT("BlockAll"));
+  PlatformMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+  PlatformMesh->SetCollisionProfileName(TEXT("OverlapAll"));
   
-  // CRITICAL: Setup for moving platform behavior
+  // CRITICAL: Enable simulated movement for proper character attachment
   PlatformMesh->SetSimulatePhysics(false);
   PlatformMesh->SetEnableGravity(false);
-  PlatformMesh->CanCharacterStepUpOn = ECB_Yes;
 
   // Create boarding zone
   BoardingZone = CreateDefaultSubobject<UBoxComponent>(TEXT("BoardingZone"));
@@ -71,9 +70,6 @@ void ARailsTrain::Tick(float DeltaTime) {
 
   // Update movement
   UpdateTrainMovement(DeltaTime);
-  
-  // Update passengers to maintain relative physics
-  UpdatePassengersPhysics(DeltaTime);
 
   // Draw debug info if enabled
   if (bShowPhysicsDebug && bUsePhysicsSimulation) {
@@ -210,41 +206,6 @@ float ARailsTrain::GetTargetSpeed() const {
 }
 
 // ========== Physics Helper Functions ==========
-
-void ARailsTrain::UpdatePassengersPhysics(float DeltaTime) {
-  // Keep passengers synced with train movement
-  for (ACharacter* Passenger : PassengersOnBoard) {
-    if (Passenger && Passenger->IsValidLowLevel()) {
-      UCharacterMovementComponent* MovementComp = Passenger->GetCharacterMovement();
-      if (MovementComp) {
-        // When character is falling (jumped), maintain train velocity
-        if (MovementComp->IsFalling()) {
-          // Calculate train's world velocity
-          FVector TrainVelocity = GetVelocity();
-          
-          // Blend train velocity into character's velocity
-          // This makes character stay relative to train even when jumping
-          FVector CurrentVelocity = MovementComp->Velocity;
-          FVector RelativeVelocity = CurrentVelocity - TrainVelocity;
-          
-          // Apply train velocity as base, keep only relative movement
-          MovementComp->Velocity = TrainVelocity + RelativeVelocity;
-          
-          // Check if character should land back on platform
-          FVector CharacterLocation = Passenger->GetActorLocation();
-          FVector PlatformLocation = PlatformMesh->GetComponentLocation();
-          float DistanceToPlatform = FVector::Dist(CharacterLocation, PlatformLocation);
-          
-          // If close enough and moving downward, snap back to platform
-          if (DistanceToPlatform < 200.0f && MovementComp->Velocity.Z < 0.0f) {
-            // Force walking mode to re-attach
-            MovementComp->SetMovementMode(MOVE_Walking);
-          }
-        }
-      }
-    }
-  }
-}
 
 float ARailsTrain::CalculateTrackGrade() {
   if (!CachedSplineComponent) {
@@ -416,41 +377,30 @@ void ARailsTrain::OnBoardingZoneBeginOverlap(
   if (Character && !PassengersOnBoard.Contains(Character)) {
     PassengersOnBoard.Add(Character);
     
-    // Use KeepWorld for smooth transition
+    // CRITICAL FIX: Use proper attachment rules for moving platforms
+    // KeepRelativeTransform ensures smooth attachment without ejection
     FAttachmentTransformRules AttachRules(
-        EAttachmentRule::KeepWorld,
-        EAttachmentRule::KeepWorld,
-        EAttachmentRule::KeepWorld,
-        false  // Don't weld - allows relative physics
+        EAttachmentRule::KeepWorld,    // Location: Keep world position initially
+        EAttachmentRule::KeepWorld,    // Rotation: Keep world rotation initially
+        EAttachmentRule::KeepWorld,    // Scale: Keep world scale
+        true                           // bWeldSimulatedBodies: Important for physics
     );
     
     Character->AttachToComponent(PlatformMesh, AttachRules);
     
-    // CRITICAL: Setup character movement for relative space physics
+    // CRITICAL: Update character movement component to handle moving base
     UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement();
     if (MovementComp) {
-      // These settings make character work in "train's local space"
+      // Enable moving base updates
       MovementComp->SetMovementMode(MOVE_Walking);
       
-      // KEY: Inherit base velocity - character now in train's reference frame
-      MovementComp->bImpartBaseVelocityX = true;
-      MovementComp->bImpartBaseVelocityY = true;
-      MovementComp->bImpartBaseVelocityZ = true;
-      MovementComp->bImpartBaseAngularVelocity = true;
-      
-      // Don't ignore base rotation - follow train's rotation
-      MovementComp->bIgnoreBaseRotation = false;
-      
-      // Floor checking
+      // IMPORTANT: These settings prevent ejection
       MovementComp->bAlwaysCheckFloor = true;
       MovementComp->bUseFlatBaseForFloorChecks = true;
       
-      // Perch settings for stable standing
+      // This is critical for smooth movement on moving platforms
       MovementComp->PerchRadiusThreshold = 0.0f;
       MovementComp->PerchAdditionalHeight = 0.0f;
-      
-      // Disable physics interaction with external objects
-      MovementComp->bEnablePhysicsInteraction = false;
     }
   }
 }
@@ -465,25 +415,19 @@ void ARailsTrain::OnBoardingZoneEndOverlap(
     
     // Proper detachment
     FDetachmentTransformRules DetachRules(
-        EDetachmentRule::KeepWorld,
-        EDetachmentRule::KeepWorld,
-        EDetachmentRule::KeepWorld,
-        true
+        EDetachmentRule::KeepWorld,    // Keep world position
+        EDetachmentRule::KeepWorld,    // Keep world rotation
+        EDetachmentRule::KeepWorld,    // Keep world scale
+        true                           // bCallModify
     );
     
     Character->DetachFromActor(DetachRules);
     
-    // Restore character movement settings to world space
+    // Restore character movement settings
     UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement();
     if (MovementComp) {
-      MovementComp->bImpartBaseVelocityX = false;
-      MovementComp->bImpartBaseVelocityY = false;
-      MovementComp->bImpartBaseVelocityZ = false;
-      MovementComp->bImpartBaseAngularVelocity = false;
-      MovementComp->bIgnoreBaseRotation = true;
       MovementComp->bAlwaysCheckFloor = true;
       MovementComp->bUseFlatBaseForFloorChecks = false;
-      MovementComp->bEnablePhysicsInteraction = true;
     }
   }
 }

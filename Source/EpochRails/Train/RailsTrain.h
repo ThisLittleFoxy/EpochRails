@@ -21,7 +21,6 @@ enum class ETrainState : uint8 {
  * Does not modify character class - uses attachment system
  * 
  * NEW: Integrated with TrainPhysicsComponent for realistic physics simulation
- * Passengers work in train's local reference frame (relative space physics)
  */
 UCLASS(Blueprintable)
 class EPOCHRAILS_API ARailsTrain : public AActor {
@@ -164,9 +163,6 @@ protected:
   float GetTargetSpeed() const;
 
   // ========== Physics Helper Functions ==========
-
-  /** Update passengers to maintain relative physics when jumping */
-  void UpdatePassengersPhysics(float DeltaTime);
 
   /** Calculate track grade at current position (in degrees) */
   float CalculateTrackGrade();
