@@ -51,7 +51,7 @@ void ARailsTrain::BeginPlay() {
 
   // Cache spline component
   if (SplinePathRef) {
-    CachedSplineComponent = SplinePathRef->GetSplineComponent();
+    CachedSplineComponent = SplinePathRef->GetSpline();
   }
 
   // Auto-start if enabled
