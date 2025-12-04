@@ -436,3 +436,46 @@ Potential additions to the system:
 
 Developed for EpochRails project
 Compatible with Unreal Engine 5.x
+
+
+## Animation Functions (Функции для анимаций)
+
+### UInteractionComponent
+
+```cpp
+// Проверить, тчка на объект в фокусе
+UFUNCTION(BlueprintPure, Category = "Interaction Animation")
+bool HasFocusedActor() const;
+
+// Нормализованное расстояние до объекта
+UFUNCTION(BlueprintPure, Category = "Interaction Animation")
+float GetFocusedActorDistanceNormalized() const;
+
+// Можно ли взаимодействовать
+UFUNCTION(BlueprintPure, Category = "Interaction Animation")
+bool CanInteractWithFocusedActor() const;
+```
+
+### AInteractableActor
+
+```cpp
+// Проверить, ст объект в фокусе
+UFUNCTION(BlueprintPure, Category = "Interaction Animation")
+bool IsFocused() const;
+
+// Проверить, идёт ли обработка взаимодействия
+UFUNCTION(BlueprintPure, Category = "Interaction Animation")
+bool IsBeingInteractedWith() const;
+
+// Анимация при начале взаимодействия
+UFUNCTION(BlueprintImplementableEvent, Category = "Interaction Animation")
+void OnInteractionStarted();
+
+// Анимация при конце взаимодействия
+UFUNCTION(BlueprintImplementableEvent, Category = "Interaction Animation")
+void OnInteractionEnded();
+```
+
+## Last Updated
+- **Date:** 2025-12-04
+- **Version:** 0.0.22
