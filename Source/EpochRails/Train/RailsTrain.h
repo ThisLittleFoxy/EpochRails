@@ -7,6 +7,11 @@
 #include "TrainPhysicsComponent.h"
 #include "RailsTrain.generated.h"
 
+class UBoxComponent;
+class UInputMappingContext;
+class UEnhancedInputLocalPlayerSubsystem;
+
+
 UENUM(BlueprintType)
 enum class ETrainState : uint8 {
   Stopped UMETA(DisplayName = "Stopped"),
@@ -116,8 +121,6 @@ protected:
   ETrainState TrainState = ETrainState::Stopped;
 
   /** Characters currently on the train platform */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
-  TArray<class ACharacter *> PassengersOnBoard;
 
   /** Current throttle position (-1.0 to 1.0) */
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
@@ -126,6 +129,21 @@ protected:
   /** Current brake position (0.0 to 1.0) */
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
   float CurrentBrake = 0.0f;
+
+    // ===== NEW: Input Mapping Contexts for passengers =====
+
+  /** Default IMC used outside the train (with jump) */
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Train|Input")
+  UInputMappingContext *DefaultInputMappingContext;
+
+  /** IMC used inside the train as passenger (without jump) */
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Train|Input")
+  UInputMappingContext *TrainPassengerInputMappingContext;
+
+  /** Priority for IMC when added to input subsystem */
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Train|Input")
+  int32 IMCPriority = 0;
+
 
   // ========== Private Variables ==========
 private:
@@ -176,24 +194,62 @@ protected:
   /** Draw debug information for physics */
   void DrawPhysicsDebug();
 
-  // ========== Collision Events ==========
+  // ===== СТАРЫЙ КОД - УДАЛИТЕ ЭТИ СТРОКИ =====
+  // Collision Events
+  // Called when something enters boarding zone
+  // UFUNCTION()
+  // void OnBoardingZoneBeginOverlap(...);
+  // UFUNCTION()
+  // void OnBoardingZoneEndOverlap(...);
 
-  /** Called when something enters boarding zone */
-  UFUNCTION()
-  void OnBoardingZoneBeginOverlap(UPrimitiveComponent *OverlappedComponent,
-                                  AActor *OtherActor,
-                                  UPrimitiveComponent *OtherComp,
-                                  int32 OtherBodyIndex, bool bFromSweep,
-                                  const FHitResult &SweepResult);
+  // ===== НОВЫЙ КОД - ОСТАВЬТЕ ТОЛЬКО ЭТО =====
 
-  /** Called when something leaves boarding zone */
+  /** List of passengers currently inside the train */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Train|Passengers")
+  TArray<class ARailsPlayerCharacter *> PassengersInside;
+
+  /** Trigger box that defines the interior space of the train */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Train|Components")
+  class UBoxComponent *TrainInteriorTrigger;
+
+  /** Switch input mapping context for a character */
+  void SwitchInputMappingContext(class ARailsPlayerCharacter *Character,
+                                 bool bInsideTrain);
+
+  /** Get Enhanced Input subsystem for a character */
+  class UEnhancedInputLocalPlayerSubsystem *
+  GetInputSubsystem(class ARailsPlayerCharacter *Character) const;
+
+  // Overlap handlers for train interior trigger
   UFUNCTION()
-  void OnBoardingZoneEndOverlap(UPrimitiveComponent *OverlappedComponent,
-                                AActor *OtherActor,
-                                UPrimitiveComponent *OtherComp,
-                                int32 OtherBodyIndex);
+  void OnTrainInteriorBeginOverlap(UPrimitiveComponent *OverlappedComponent,
+                                   AActor *OtherActor,
+                                   UPrimitiveComponent *OtherComp,
+                                   int32 OtherBodyIndex, bool bFromSweep,
+                                   const FHitResult &SweepResult);
+
+  UFUNCTION()
+  void OnTrainInteriorEndOverlap(UPrimitiveComponent *OverlappedComponent,
+                                 AActor *OtherActor,
+                                 UPrimitiveComponent *OtherComp,
+                                 int32 OtherBodyIndex);
 
 public:
+  // ===== NEW: Passenger management =====
+
+  /** Check if character is currently inside the train */
+  UFUNCTION(BlueprintCallable, Category = "Train|Passengers")
+  bool IsPassengerInside(ARailsPlayerCharacter *Character) const;
+
+  /** Called when player enters the train interior */
+  UFUNCTION(BlueprintCallable, Category = "Train|Passengers")
+  void OnPlayerEnterTrain(ARailsPlayerCharacter *Character);
+
+  /** Called when player exits the train interior */
+  UFUNCTION(BlueprintCallable, Category = "Train|Passengers")
+  void OnPlayerExitTrain(ARailsPlayerCharacter *Character);
+
+
   // ========== Public API ==========
 
   /** Start train movement */
@@ -226,7 +282,9 @@ public:
 
   /** Get all passengers */
   UFUNCTION(BlueprintPure, Category = "Train Control")
-  TArray<ACharacter *> GetPassengers() const { return PassengersOnBoard; }
+  TArray<ARailsPlayerCharacter *> GetPassengers() const {
+    return PassengersInside;
+  }
 
   /** Apply throttle input (-1.0 to 1.0) */
   UFUNCTION(BlueprintCallable, Category = "Train Control")

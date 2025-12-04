@@ -1,5 +1,6 @@
 // RailsTrain.cpp
 
+#include "EpochRails.h"
 #include "RailsTrain.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -8,6 +9,12 @@
 #include "RailsSplinePath.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "DrawDebugHelpers.h"
+#include "EnhancedInputSubsystems.h"
+#include "EnhancedInputComponent.h"
+#include "InputMappingContext.h"
+#include "Engine/LocalPlayer.h"
+#include "GameFramework/PlayerController.h"
+#include "Character/RailsPlayerCharacter.h"
 
 ARailsTrain::ARailsTrain() {
   PrimaryActorTick.bCanEverTick = true;
@@ -32,27 +39,28 @@ ARailsTrain::ARailsTrain() {
   PlatformMesh->SetSimulatePhysics(false);
   PlatformMesh->SetEnableGravity(false);
 
-  // Create boarding zone
-  BoardingZone = CreateDefaultSubobject<UBoxComponent>(TEXT("BoardingZone"));
-  BoardingZone->SetupAttachment(PlatformMesh);
-  BoardingZone->SetBoxExtent(FVector(150.0f, 150.0f, 100.0f));
-  BoardingZone->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-  BoardingZone->SetCollisionProfileName(TEXT("OverlapAll"));
-
   // Create physics component
   PhysicsComponent = CreateDefaultSubobject<UTrainPhysicsComponent>(TEXT("PhysicsComponent"));
+  // NEW: Create trigger box for train interior
+  TrainInteriorTrigger =
+      CreateDefaultSubobject<UBoxComponent>(TEXT("TrainInteriorTrigger"));
+  TrainInteriorTrigger->SetupAttachment(RootComponent);
+
+  // Set box size (adjust these values based on your train model size)
+  TrainInteriorTrigger->SetBoxExtent(FVector(500.f, 250.f, 200.f));
+
+  // Set collision to trigger only
+  TrainInteriorTrigger->SetCollisionProfileName(TEXT("Trigger"));
+  TrainInteriorTrigger->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+  TrainInteriorTrigger->SetCollisionResponseToAllChannels(ECR_Ignore);
+  TrainInteriorTrigger->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+
+  // Initialize IMC priority
+  IMCPriority = 0;
 }
 
 void ARailsTrain::BeginPlay() {
   Super::BeginPlay();
-
-  // Bind boarding zone events
-  if (BoardingZone) {
-    BoardingZone->OnComponentBeginOverlap.AddDynamic(
-        this, &ARailsTrain::OnBoardingZoneBeginOverlap);
-    BoardingZone->OnComponentEndOverlap.AddDynamic(
-        this, &ARailsTrain::OnBoardingZoneEndOverlap);
-  }
 
   // Cache spline component
   if (SplinePathRef) {
@@ -62,6 +70,17 @@ void ARailsTrain::BeginPlay() {
   // Auto-start if enabled
   if (bAutoStart) {
     StartTrain();
+  }
+
+  // NEW: Bind overlap events for train interior trigger
+  if (TrainInteriorTrigger) {
+    TrainInteriorTrigger->OnComponentBeginOverlap.AddDynamic(
+        this, &ARailsTrain::OnTrainInteriorBeginOverlap);
+    TrainInteriorTrigger->OnComponentEndOverlap.AddDynamic(
+        this, &ARailsTrain::OnTrainInteriorEndOverlap);
+
+    UE_LOG(LogEpochRails, Log,
+           TEXT("Train interior trigger configured for train: %s"), *GetName());
   }
 }
 
@@ -341,8 +360,7 @@ void ARailsTrain::DrawPhysicsDebug() {
       PhysicsComponent->PhysicsState.bIsWheelSlipping ? TEXT("YES") : TEXT("NO"),
       PhysicsComponent->CalculateStoppingDistance(),
       PhysicsComponent->PhysicsState.DistanceTraveled,
-      PassengersOnBoard.Num()
-  );
+      PassengersInside.Num());
 
   // Display on screen
   GEngine->AddOnScreenDebugMessage(
@@ -364,72 +382,6 @@ void ARailsTrain::DrawPhysicsDebug() {
   
   FColor GradeColor = SmoothedGrade > 0.0f ? FColor::Red : (SmoothedGrade < 0.0f ? FColor::Green : FColor::White);
   DrawDebugLine(GetWorld(), TrainLocation, GradeEndPoint, GradeColor, false, -1.0f, 0, 5.0f);
-}
-
-// ========== Collision Events ==========
-
-void ARailsTrain::OnBoardingZoneBeginOverlap(
-    UPrimitiveComponent *OverlappedComponent, AActor *OtherActor,
-    UPrimitiveComponent *OtherComp, int32 OtherBodyIndex, bool bFromSweep,
-    const FHitResult &SweepResult) {
-  
-  ACharacter *Character = Cast<ACharacter>(OtherActor);
-  if (Character && !PassengersOnBoard.Contains(Character)) {
-    PassengersOnBoard.Add(Character);
-    
-    // CRITICAL FIX: Use proper attachment rules for moving platforms
-    // KeepRelativeTransform ensures smooth attachment without ejection
-    FAttachmentTransformRules AttachRules(
-        EAttachmentRule::KeepWorld,    // Location: Keep world position initially
-        EAttachmentRule::KeepWorld,    // Rotation: Keep world rotation initially
-        EAttachmentRule::KeepWorld,    // Scale: Keep world scale
-        true                           // bWeldSimulatedBodies: Important for physics
-    );
-    
-    Character->AttachToComponent(PlatformMesh, AttachRules);
-    
-    // CRITICAL: Update character movement component to handle moving base
-    UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement();
-    if (MovementComp) {
-      // Enable moving base updates
-      MovementComp->SetMovementMode(MOVE_Walking);
-      
-      // IMPORTANT: These settings prevent ejection
-      MovementComp->bAlwaysCheckFloor = true;
-      MovementComp->bUseFlatBaseForFloorChecks = true;
-      
-      // This is critical for smooth movement on moving platforms
-      MovementComp->PerchRadiusThreshold = 0.0f;
-      MovementComp->PerchAdditionalHeight = 0.0f;
-    }
-  }
-}
-
-void ARailsTrain::OnBoardingZoneEndOverlap(
-    UPrimitiveComponent *OverlappedComponent, AActor *OtherActor,
-    UPrimitiveComponent *OtherComp, int32 OtherBodyIndex) {
-  
-  ACharacter *Character = Cast<ACharacter>(OtherActor);
-  if (Character && PassengersOnBoard.Contains(Character)) {
-    PassengersOnBoard.Remove(Character);
-    
-    // Proper detachment
-    FDetachmentTransformRules DetachRules(
-        EDetachmentRule::KeepWorld,    // Keep world position
-        EDetachmentRule::KeepWorld,    // Keep world rotation
-        EDetachmentRule::KeepWorld,    // Keep world scale
-        true                           // bCallModify
-    );
-    
-    Character->DetachFromActor(DetachRules);
-    
-    // Restore character movement settings
-    UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement();
-    if (MovementComp) {
-      MovementComp->bAlwaysCheckFloor = true;
-      MovementComp->bUseFlatBaseForFloorChecks = false;
-    }
-  }
 }
 
 // ========== Public API ==========
@@ -470,7 +422,11 @@ float ARailsTrain::GetCurrentSpeedKmh() const {
 }
 
 bool ARailsTrain::IsCharacterOnTrain(ACharacter *Character) const {
-  return PassengersOnBoard.Contains(Character);
+  // OLD: return PassengersOnBoard.Contains(Character);
+
+  // NEW: Use new passenger tracking
+  ARailsPlayerCharacter *PlayerChar = Cast<ARailsPlayerCharacter>(Character);
+  return PlayerChar ? PassengersInside.Contains(PlayerChar) : false;
 }
 
 void ARailsTrain::ApplyThrottle(float ThrottleValue) {
@@ -522,5 +478,156 @@ void ARailsTrain::AddWagons(int32 Count) {
 void ARailsTrain::RemoveWagons(int32 Count) {
   if (PhysicsComponent) {
     PhysicsComponent->RemoveWagons(Count);
+  }
+}
+
+// ===== Passenger Management Implementation =====
+
+bool ARailsTrain::IsPassengerInside(ARailsPlayerCharacter *Character) const {
+  return PassengersInside.Contains(Character);
+}
+
+void ARailsTrain::OnPlayerEnterTrain(ARailsPlayerCharacter *Character) {
+  if (!Character) {
+    return;
+  }
+
+  if (PassengersInside.Contains(Character)) {
+    UE_LOG(LogEpochRails, Warning,
+           TEXT("Player %s already registered as passenger"),
+           *Character->GetName());
+    return;
+  }
+
+  // Add to passengers list
+  PassengersInside.Add(Character);
+
+  // Switch to passenger IMC (no jump)
+  SwitchInputMappingContext(Character, true);
+
+  UE_LOG(LogEpochRails, Log, TEXT("Player %s entered train %s - Jump disabled"),
+         *Character->GetName(), *GetName());
+}
+
+void ARailsTrain::OnPlayerExitTrain(ARailsPlayerCharacter *Character) {
+  if (!Character) {
+    return;
+  }
+
+  if (!PassengersInside.Contains(Character)) {
+    UE_LOG(LogEpochRails, Warning,
+           TEXT("Player %s was not registered as passenger"),
+           *Character->GetName());
+    return;
+  }
+
+  // Remove from passengers list
+  PassengersInside.Remove(Character);
+
+  // Restore default IMC (with jump)
+  SwitchInputMappingContext(Character, false);
+
+  UE_LOG(LogEpochRails, Log, TEXT("Player %s exited train %s - Jump enabled"),
+         *Character->GetName(), *GetName());
+}
+
+void ARailsTrain::SwitchInputMappingContext(ARailsPlayerCharacter *Character,
+                                            bool bInsideTrain) {
+
+  if (!Character) {
+    return;
+  }
+
+  UEnhancedInputLocalPlayerSubsystem *Subsystem = GetInputSubsystem(Character);
+  if (!Subsystem) {
+    UE_LOG(LogEpochRails, Warning,
+           TEXT("Could not get Enhanced Input subsystem for character %s"),
+           *Character->GetName());
+    return;
+  }
+
+  if (bInsideTrain) {
+    // Remove default IMC
+    if (DefaultInputMappingContext) {
+      Subsystem->RemoveMappingContext(DefaultInputMappingContext);
+      UE_LOG(
+          LogEpochRails, Log, TEXT("Removed default IMC: %s"),
+          *DefaultInputMappingContext->GetFName().ToString()); // <-- ИЗМЕНЕНО
+    }
+
+    // Add passenger IMC (without jump)
+    if (TrainPassengerInputMappingContext) {
+      Subsystem->AddMappingContext(TrainPassengerInputMappingContext,
+                                   IMCPriority);
+      UE_LOG(LogEpochRails, Log, TEXT("Added passenger IMC (no jump): %s"),
+             *TrainPassengerInputMappingContext->GetFName()
+                  .ToString()); // <-- ИЗМЕНЕНО
+    } else {
+      UE_LOG(LogEpochRails, Error,
+             TEXT("TrainPassengerInputMappingContext is not set! Jump will not "
+                  "be disabled."));
+    }
+
+  } else {
+    // Remove passenger IMC
+    if (TrainPassengerInputMappingContext) {
+      Subsystem->RemoveMappingContext(TrainPassengerInputMappingContext);
+      UE_LOG(LogEpochRails, Log, TEXT("Removed passenger IMC: %s"),
+             *TrainPassengerInputMappingContext->GetFName()
+                  .ToString()); // <-- ИЗМЕНЕНО
+    }
+
+    // Restore default IMC (with jump)
+    if (DefaultInputMappingContext) {
+      Subsystem->AddMappingContext(DefaultInputMappingContext, IMCPriority);
+      UE_LOG(
+          LogEpochRails, Log, TEXT("Restored default IMC (with jump): %s"),
+          *DefaultInputMappingContext->GetFName().ToString()); // <-- ИЗМЕНЕНО
+    } else {
+      UE_LOG(LogEpochRails, Error,
+             TEXT("DefaultInputMappingContext is not set! Player may have no "
+                  "input."));
+    }
+  }
+}
+
+UEnhancedInputLocalPlayerSubsystem *
+ARailsTrain::GetInputSubsystem(ARailsPlayerCharacter *Character) const {
+
+  if (!Character) {
+    return nullptr;
+  }
+
+  APlayerController *PC = Cast<APlayerController>(Character->GetController());
+  if (!PC) {
+    return nullptr;
+  }
+
+  ULocalPlayer *LocalPlayer = PC->GetLocalPlayer();
+  if (!LocalPlayer) {
+    return nullptr;
+  }
+
+  return LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
+}
+
+void ARailsTrain::OnTrainInteriorBeginOverlap(
+    UPrimitiveComponent *OverlappedComponent, AActor *OtherActor,
+    UPrimitiveComponent *OtherComp, int32 OtherBodyIndex, bool bFromSweep,
+    const FHitResult &SweepResult) {
+
+  ARailsPlayerCharacter *Player = Cast<ARailsPlayerCharacter>(OtherActor);
+  if (Player) {
+    OnPlayerEnterTrain(Player);
+  }
+}
+
+void ARailsTrain::OnTrainInteriorEndOverlap(
+    UPrimitiveComponent *OverlappedComponent, AActor *OtherActor,
+    UPrimitiveComponent *OtherComp, int32 OtherBodyIndex) {
+
+  ARailsPlayerCharacter *Player = Cast<ARailsPlayerCharacter>(OtherActor);
+  if (Player) {
+    OnPlayerExitTrain(Player);
   }
 }
