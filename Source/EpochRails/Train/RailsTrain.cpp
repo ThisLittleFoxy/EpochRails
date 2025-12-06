@@ -1,7 +1,7 @@
 // RailsTrain.cpp
 
-#include "EpochRails.h"
 #include "RailsTrain.h"
+#include "EpochRails.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Character.h"
