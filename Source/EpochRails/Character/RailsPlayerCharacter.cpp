@@ -42,8 +42,11 @@ ARailsPlayerCharacter::ARailsPlayerCharacter() {
   // Create a camera boom (pulls in towards the player if there is a collision)
   CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
   CameraBoom->SetupAttachment(RootComponent);
-  CameraBoom->TargetArmLength = 400.0f;
+  CameraBoom->TargetArmLength = 0.0f;
   CameraBoom->bUsePawnControlRotation = true;
+  CameraBoom->bDoCollisionTest = false;
+  CameraBoom->bEnableCameraLag = false;         // Usually false for FPS
+  CameraBoom->bEnableCameraRotationLag = false; // Usually false for FPS
 
   // Create a follow camera
   FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
@@ -64,6 +67,17 @@ void ARailsPlayerCharacter::BeginPlay() {
   // Initialize movement speed
   if (UCharacterMovementComponent *MovementComp = GetCharacterMovement()) {
     MovementComp->MaxWalkSpeed = WalkSpeed;
+  }
+
+  // Make capsule component ignore camera trace
+  if (GetCapsuleComponent()) {
+    GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera,
+                                                         ECR_Ignore);
+  }
+
+  // Make mesh ignore camera trace as well
+  if (GetMesh()) {
+    GetMesh()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
   }
 }
 
