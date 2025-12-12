@@ -1,20 +1,36 @@
 // RailsTrain.cpp
 
 #include "RailsTrain.h"
+
 #include "EpochRails.h"
+
 #include "Components/BoxComponent.h"
+
 #include "Components/StaticMeshComponent.h"
+
 #include "GameFramework/Character.h"
+
 #include "GameFramework/CharacterMovementComponent.h"
-#include "RailsSplinePath.h"
+
 #include "Kismet/KismetMathLibrary.h"
+
 #include "DrawDebugHelpers.h"
+
 #include "EnhancedInputSubsystems.h"
+
 #include "EnhancedInputComponent.h"
+
 #include "InputMappingContext.h"
+
 #include "Engine/LocalPlayer.h"
+
 #include "GameFramework/PlayerController.h"
+
+#include "RailsSplinePath.h"
+
 #include "Character/RailsPlayerCharacter.h"
+
+#include "Resources/ResourceInventoryComponent.h"
 
 ARailsTrain::ARailsTrain() {
   PrimaryActorTick.bCanEverTick = true;
@@ -34,13 +50,14 @@ ARailsTrain::ARailsTrain() {
   PlatformMesh->SetupAttachment(TrainRoot);
   PlatformMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
   PlatformMesh->SetCollisionProfileName(TEXT("OverlapAll"));
-  
+
   // CRITICAL: Enable simulated movement for proper character attachment
   PlatformMesh->SetSimulatePhysics(false);
   PlatformMesh->SetEnableGravity(false);
 
   // Create physics component
   PhysicsComponent = CreateDefaultSubobject<UTrainPhysicsComponent>(TEXT("PhysicsComponent"));
+
   // NEW: Create trigger box for train interior
   TrainInteriorTrigger =
       CreateDefaultSubobject<UBoxComponent>(TEXT("TrainInteriorTrigger"));
@@ -54,6 +71,10 @@ ARailsTrain::ARailsTrain() {
   TrainInteriorTrigger->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
   TrainInteriorTrigger->SetCollisionResponseToAllChannels(ECR_Ignore);
   TrainInteriorTrigger->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+
+  // Inventory
+  TrainInventory = CreateDefaultSubobject<UResourceInventoryComponent>(
+      TEXT("TrainInventory"));
 
   // Initialize IMC priority
   IMCPriority = 0;
@@ -78,7 +99,6 @@ void ARailsTrain::BeginPlay() {
         this, &ARailsTrain::OnTrainInteriorBeginOverlap);
     TrainInteriorTrigger->OnComponentEndOverlap.AddDynamic(
         this, &ARailsTrain::OnTrainInteriorEndOverlap);
-
     UE_LOG(LogEpochRails, Log,
            TEXT("Train interior trigger configured for train: %s"), *GetName());
   }
@@ -124,7 +144,7 @@ void ARailsTrain::UpdatePhysicsMovement(float DeltaTime) {
 
   // Get velocity from physics (in m/s)
   float VelocityMs = PhysicsComponent->GetVelocityMs();
-  
+
   // Convert to cm/s for Unreal units
   CurrentSpeed = VelocityMs * 100.0f;
 
@@ -219,7 +239,7 @@ float ARailsTrain::GetTargetSpeed() const {
   if (TrainState == ETrainState::Stopped) {
     return 0.0f;
   }
-  
+
   // Apply throttle as percentage of max speed
   return MaxSpeed * FMath::Abs(CurrentThrottle);
 }
@@ -234,14 +254,14 @@ float ARailsTrain::CalculateTrackGrade() {
   // Get tangent at current position
   FVector CurrentTangent = CachedSplineComponent->GetTangentAtDistanceAlongSpline(
       CurrentDistance, ESplineCoordinateSpace::World);
-  
+
   // Get tangent ahead
   float AheadDistance = CurrentDistance + PhysicsSampleDistance;
   float SplineLength = CachedSplineComponent->GetSplineLength();
   if (AheadDistance > SplineLength && bLoopPath) {
     AheadDistance = FMath::Fmod(AheadDistance, SplineLength);
   }
-  
+
   FVector AheadTangent = CachedSplineComponent->GetTangentAtDistanceAlongSpline(
       AheadDistance, ESplineCoordinateSpace::World);
 
@@ -267,14 +287,14 @@ float ARailsTrain::CalculateTrackCurvature() {
   // Get direction at current position
   FVector CurrentDir = CachedSplineComponent->GetDirectionAtDistanceAlongSpline(
       CurrentDistance, ESplineCoordinateSpace::World);
-  
+
   // Get direction ahead
   float AheadDistance = CurrentDistance + PhysicsSampleDistance;
   float SplineLength = CachedSplineComponent->GetSplineLength();
   if (AheadDistance > SplineLength && bLoopPath) {
     AheadDistance = FMath::Fmod(AheadDistance, SplineLength);
   }
-  
+
   FVector AheadDir = CachedSplineComponent->GetDirectionAtDistanceAlongSpline(
       AheadDistance, ESplineCoordinateSpace::World);
 
@@ -300,9 +320,9 @@ void ARailsTrain::UpdatePhysicsParameters(float DeltaTime) {
   float TargetCurvature = CalculateTrackCurvature();
 
   // Smooth the transitions
-  SmoothedGrade = FMath::FInterpTo(SmoothedGrade, TargetGrade, 
+  SmoothedGrade = FMath::FInterpTo(SmoothedGrade, TargetGrade,
                                    DeltaTime, GradeSmoothingSpeed);
-  SmoothedCurvature = FMath::FInterpTo(SmoothedCurvature, TargetCurvature, 
+  SmoothedCurvature = FMath::FInterpTo(SmoothedCurvature, TargetCurvature,
                                        DeltaTime, GradeSmoothingSpeed);
 
   // Update physics component
@@ -364,8 +384,8 @@ void ARailsTrain::DrawPhysicsDebug() {
 
   // Display on screen
   GEngine->AddOnScreenDebugMessage(
-      -1, 0.0f, 
-      PhysicsComponent->PhysicsState.bIsWheelSlipping ? FColor::Red : FColor::Green, 
+      -1, 0.0f,
+      PhysicsComponent->PhysicsState.bIsWheelSlipping ? FColor::Red : FColor::Green,
       DebugText
   );
 
@@ -373,13 +393,13 @@ void ARailsTrain::DrawPhysicsDebug() {
   FVector TrainLocation = GetActorLocation();
   FVector UpVector = GetActorUpVector();
   FVector ForwardVector = GetActorForwardVector();
-  
+
   // Draw grade line
   float GradeVisualizationLength = 500.0f;
-  FVector GradeEndPoint = TrainLocation + 
+  FVector GradeEndPoint = TrainLocation +
       ForwardVector * GradeVisualizationLength * FMath::Cos(FMath::DegreesToRadians(SmoothedGrade)) +
       UpVector * GradeVisualizationLength * FMath::Sin(FMath::DegreesToRadians(SmoothedGrade));
-  
+
   FColor GradeColor = SmoothedGrade > 0.0f ? FColor::Red : (SmoothedGrade < 0.0f ? FColor::Green : FColor::White);
   DrawDebugLine(GetWorld(), TrainLocation, GradeEndPoint, GradeColor, false, -1.0f, 0, 5.0f);
 }
@@ -393,6 +413,7 @@ void ARailsTrain::StartTrain() {
   } else {
     CurrentThrottle = 1.0f;
   }
+
   TrainState = ETrainState::Accelerating;
 }
 
@@ -404,6 +425,7 @@ void ARailsTrain::StopTrain() {
     CurrentThrottle = 0.0f;
     CurrentSpeed = 0.0f;
   }
+
   TrainState = ETrainState::Stopped;
 }
 
@@ -417,21 +439,18 @@ float ARailsTrain::GetCurrentSpeedKmh() const {
   if (bUsePhysicsSimulation && PhysicsComponent) {
     return PhysicsComponent->GetVelocityKmh();
   }
+
   // Convert cm/s to km/h
   return (CurrentSpeed / 100.0f) * 3.6f;
 }
 
 bool ARailsTrain::IsCharacterOnTrain(ACharacter *Character) const {
-  // OLD: return PassengersOnBoard.Contains(Character);
-
-  // NEW: Use new passenger tracking
   ARailsPlayerCharacter *PlayerChar = Cast<ARailsPlayerCharacter>(Character);
   return PlayerChar ? PassengersInside.Contains(PlayerChar) : false;
 }
 
 void ARailsTrain::ApplyThrottle(float ThrottleValue) {
   CurrentThrottle = FMath::Clamp(ThrottleValue, -1.0f, 1.0f);
-  
   if (bUsePhysicsSimulation && PhysicsComponent) {
     PhysicsComponent->SetThrottle(FMath::Max(0.0f, CurrentThrottle));
   }
@@ -439,7 +458,6 @@ void ARailsTrain::ApplyThrottle(float ThrottleValue) {
 
 void ARailsTrain::ApplyBrake(float BrakeValue) {
   CurrentBrake = FMath::Clamp(BrakeValue, 0.0f, 1.0f);
-  
   if (bUsePhysicsSimulation && PhysicsComponent) {
     PhysicsComponent->SetBrake(CurrentBrake);
   }
@@ -448,11 +466,10 @@ void ARailsTrain::ApplyBrake(float BrakeValue) {
 void ARailsTrain::EmergencyBrake() {
   CurrentThrottle = 0.0f;
   CurrentBrake = 1.0f;
-  
   if (bUsePhysicsSimulation && PhysicsComponent) {
     PhysicsComponent->EmergencyBrake();
   }
-  
+
   TrainState = ETrainState::Decelerating;
 }
 
@@ -460,12 +477,12 @@ float ARailsTrain::GetStoppingDistance() const {
   if (bUsePhysicsSimulation && PhysicsComponent) {
     return PhysicsComponent->CalculateStoppingDistance();
   }
-  
+
   // Simple kinematic calculation for legacy mode
   if (CurrentSpeed > 0.0f && DecelerationRate > 0.0f) {
     return (CurrentSpeed * CurrentSpeed) / (2.0f * DecelerationRate);
   }
-  
+
   return 0.0f;
 }
 
@@ -502,6 +519,9 @@ void ARailsTrain::OnPlayerEnterTrain(ARailsPlayerCharacter *Character) {
   // Add to passengers list
   PassengersInside.Add(Character);
 
+  // Set current train in character
+  Character->SetCurrentTrain(this);
+
   // Switch to passenger IMC (no jump)
   SwitchInputMappingContext(Character, true);
 
@@ -524,6 +544,9 @@ void ARailsTrain::OnPlayerExitTrain(ARailsPlayerCharacter *Character) {
   // Remove from passengers list
   PassengersInside.Remove(Character);
 
+  // Clear current train in character
+  Character->SetCurrentTrain(nullptr);
+
   // Restore default IMC (with jump)
   SwitchInputMappingContext(Character, false);
 
@@ -533,7 +556,6 @@ void ARailsTrain::OnPlayerExitTrain(ARailsPlayerCharacter *Character) {
 
 void ARailsTrain::SwitchInputMappingContext(ARailsPlayerCharacter *Character,
                                             bool bInsideTrain) {
-
   if (!Character) {
     return;
   }
@@ -552,7 +574,7 @@ void ARailsTrain::SwitchInputMappingContext(ARailsPlayerCharacter *Character,
       Subsystem->RemoveMappingContext(DefaultInputMappingContext);
       UE_LOG(
           LogEpochRails, Log, TEXT("Removed default IMC: %s"),
-          *DefaultInputMappingContext->GetFName().ToString()); // <-- ИЗМЕНЕНО
+          *DefaultInputMappingContext->GetFName().ToString());
     }
 
     // Add passenger IMC (without jump)
@@ -561,7 +583,7 @@ void ARailsTrain::SwitchInputMappingContext(ARailsPlayerCharacter *Character,
                                    IMCPriority);
       UE_LOG(LogEpochRails, Log, TEXT("Added passenger IMC (no jump): %s"),
              *TrainPassengerInputMappingContext->GetFName()
-                  .ToString()); // <-- ИЗМЕНЕНО
+                 .ToString());
     } else {
       UE_LOG(LogEpochRails, Error,
              TEXT("TrainPassengerInputMappingContext is not set! Jump will not "
@@ -574,7 +596,7 @@ void ARailsTrain::SwitchInputMappingContext(ARailsPlayerCharacter *Character,
       Subsystem->RemoveMappingContext(TrainPassengerInputMappingContext);
       UE_LOG(LogEpochRails, Log, TEXT("Removed passenger IMC: %s"),
              *TrainPassengerInputMappingContext->GetFName()
-                  .ToString()); // <-- ИЗМЕНЕНО
+                 .ToString());
     }
 
     // Restore default IMC (with jump)
@@ -582,7 +604,7 @@ void ARailsTrain::SwitchInputMappingContext(ARailsPlayerCharacter *Character,
       Subsystem->AddMappingContext(DefaultInputMappingContext, IMCPriority);
       UE_LOG(
           LogEpochRails, Log, TEXT("Restored default IMC (with jump): %s"),
-          *DefaultInputMappingContext->GetFName().ToString()); // <-- ИЗМЕНЕНО
+          *DefaultInputMappingContext->GetFName().ToString());
     } else {
       UE_LOG(LogEpochRails, Error,
              TEXT("DefaultInputMappingContext is not set! Player may have no "
@@ -593,7 +615,6 @@ void ARailsTrain::SwitchInputMappingContext(ARailsPlayerCharacter *Character,
 
 UEnhancedInputLocalPlayerSubsystem *
 ARailsTrain::GetInputSubsystem(ARailsPlayerCharacter *Character) const {
-
   if (!Character) {
     return nullptr;
   }
@@ -615,7 +636,6 @@ void ARailsTrain::OnTrainInteriorBeginOverlap(
     UPrimitiveComponent *OverlappedComponent, AActor *OtherActor,
     UPrimitiveComponent *OtherComp, int32 OtherBodyIndex, bool bFromSweep,
     const FHitResult &SweepResult) {
-
   ARailsPlayerCharacter *Player = Cast<ARailsPlayerCharacter>(OtherActor);
   if (Player) {
     OnPlayerEnterTrain(Player);
@@ -625,7 +645,6 @@ void ARailsTrain::OnTrainInteriorBeginOverlap(
 void ARailsTrain::OnTrainInteriorEndOverlap(
     UPrimitiveComponent *OverlappedComponent, AActor *OtherActor,
     UPrimitiveComponent *OtherComp, int32 OtherBodyIndex) {
-
   ARailsPlayerCharacter *Player = Cast<ARailsPlayerCharacter>(OtherActor);
   if (Player) {
     OnPlayerExitTrain(Player);
