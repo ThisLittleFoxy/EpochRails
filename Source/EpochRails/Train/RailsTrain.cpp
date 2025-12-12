@@ -34,7 +34,6 @@ ARailsTrain::ARailsTrain() {
   PlatformMesh->SetupAttachment(TrainRoot);
   PlatformMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
   PlatformMesh->SetCollisionProfileName(TEXT("OverlapAll"));
-  
   // CRITICAL: Enable simulated movement for proper character attachment
   PlatformMesh->SetSimulatePhysics(false);
   PlatformMesh->SetEnableGravity(false);
@@ -45,16 +44,16 @@ ARailsTrain::ARailsTrain() {
   TrainInteriorTrigger =
       CreateDefaultSubobject<UBoxComponent>(TEXT("TrainInteriorTrigger"));
   TrainInteriorTrigger->SetupAttachment(RootComponent);
-
   // Set box size (adjust these values based on your train model size)
   TrainInteriorTrigger->SetBoxExtent(FVector(500.f, 250.f, 200.f));
-
   // Set collision to trigger only
   TrainInteriorTrigger->SetCollisionProfileName(TEXT("Trigger"));
   TrainInteriorTrigger->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
   TrainInteriorTrigger->SetCollisionResponseToAllChannels(ECR_Ignore);
   TrainInteriorTrigger->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-
+  // Invetory
+  TrainInventory = CreateDefaultSubobject<UResourceInventoryComponent>(
+      TEXT("TrainInventory"));
   // Initialize IMC priority
   IMCPriority = 0;
 }

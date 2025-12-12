@@ -57,6 +57,10 @@ protected:
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
   UTrainPhysicsComponent *PhysicsComponent;
 
+  // TrainInventory
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+  class UResourceInventoryComponent *TrainInventory;
+
   // ========== Movement Settings ==========
 
   /** Reference to the spline path to follow */
