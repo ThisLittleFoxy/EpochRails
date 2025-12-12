@@ -2,11 +2,11 @@
 
 #include "RailsTrain.h"
 #include "EpochRails.h"
+
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "RailsSplinePath.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "DrawDebugHelpers.h"
 #include "EnhancedInputSubsystems.h"
@@ -14,7 +14,11 @@
 #include "InputMappingContext.h"
 #include "Engine/LocalPlayer.h"
 #include "GameFramework/PlayerController.h"
+
+#include "RailsSplinePath.h"
 #include "Character/RailsPlayerCharacter.h"
+#include "Resources/ResourceInventoryComponent.h"
+
 
 ARailsTrain::ARailsTrain() {
   PrimaryActorTick.bCanEverTick = true;
