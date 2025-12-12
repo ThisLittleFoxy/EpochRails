@@ -1,258 +1,106 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
+// RailsPlayerCharacter.h
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-#include "Logging/LogMacros.h"
+#include "InputActionValue.h"
 #include "RailsPlayerCharacter.generated.h"
 
-class USpringArmComponent;
+class UInputComponent;
+class USkeletalMeshComponent;
 class UCameraComponent;
 class UInputAction;
-class UInteractionComponent;
-class ARailsTrain;     // уже есть
-class ARailsTrainSeat; // добавьте эту строку если её нет
-struct FInputActionValue;
+class UInputMappingContext;
+class ARailsTrain;
 
-DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
-
-/**
- * A simple player-controllable third person character
- * Implements a controllable orbiting camera
- */
-UCLASS(abstract)
-class ARailsPlayerCharacter : public ACharacter {
+UCLASS(config = Game)
+class EPOCHRAILS_API ARailsPlayerCharacter : public ACharacter {
   GENERATED_BODY()
 
-  /** Camera boom positioning the camera behind the character */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components",
+public:
+  ARailsPlayerCharacter();
+
+  // ========== Components ==========
+
+  /** Camera boom positioning the camera behind character */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera,
             meta = (AllowPrivateAccess = "true"))
-  USpringArmComponent *CameraBoom;
+  class USpringArmComponent *CameraBoom;
 
   /** Follow camera */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components",
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera,
             meta = (AllowPrivateAccess = "true"))
   UCameraComponent *FollowCamera;
 
-  /** Interaction component for detecting and interacting with objects */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components",
-            meta = (AllowPrivateAccess = "true"))
-  UInteractionComponent *InteractionComponent;
-
-protected:
-  // ========== Camera Settings ==========
-
-  /** Socket name to attach camera boom to. Leave empty to attach to root
-   * component */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-  FName CameraSocketName;
-
-  /** If true, camera boom will attach to mesh socket instead of root component
-   */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-  bool bAttachCameraToSocket = false;
-
-  /** Custom relative location offset for camera boom when attached to socket */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-  FVector CameraRelativeLocationOffset = FVector::ZeroVector;
-
-  /** Custom relative rotation offset for camera boom when attached to socket */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-  FRotator CameraRelativeRotationOffset = FRotator::ZeroRotator;
-
-  /** If true, camera boom ignores socket rotation and uses world/pawn rotation
-   * instead */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-  bool bIgnoreSocketRotation = true;
-
-  // ========== Movement Settings ==========
-
-  /** Normal walking speed */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Sprint")
-  float WalkSpeed = 500.0f;
-
-  /** Sprint speed */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Sprint")
-  float SprintSpeed = 800.0f;
+  /** Interaction component for interacting with objects */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction")
+  class UInteractionComponent *InteractionComponent;
 
   // ========== Input Actions ==========
 
-  /** Jump Input Action */
-  UPROPERTY(EditAnywhere, Category = "Input")
-  UInputAction *JumpAction;
-
   /** Move Input Action */
-  UPROPERTY(EditAnywhere, Category = "Input")
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input,
+            meta = (AllowPrivateAccess = "true"))
   UInputAction *MoveAction;
 
   /** Look Input Action */
-  UPROPERTY(EditAnywhere, Category = "Input")
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input,
+            meta = (AllowPrivateAccess = "true"))
   UInputAction *LookAction;
 
-  /** Mouse Look Input Action */
-  UPROPERTY(EditAnywhere, Category = "Input")
-  UInputAction *MouseLookAction;
-
-  /** Sprint Input Action */
-  UPROPERTY(EditAnywhere, Category = "Input")
-  UInputAction *SprintAction;
+  /** Jump Input Action */
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input,
+            meta = (AllowPrivateAccess = "true"))
+  UInputAction *JumpAction;
 
   /** Interact Input Action */
-  UPROPERTY(EditAnywhere, Category = "Input")
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input,
+            meta = (AllowPrivateAccess = "true"))
   UInputAction *InteractAction;
 
-  /** Called when player applies throttle input */
-  UFUNCTION()
-  void OnThrottleInput(const FInputActionValue &Value);
-
-  /** Called when player applies brake input */
-  UFUNCTION()
-  void OnBrakeInput(const FInputActionValue &Value);
-
-  /** Input Action for train throttle control */
-  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|Train")
-  class UInputAction *ThrottleAction;
-
-  /** Input Action for train brake control */
-  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|Train")
-  class UInputAction *BrakeAction;
-
-  UPROPERTY(BlueprintReadOnly, Category = "Train")
-  ARailsTrain *ControlledTrain;
-
-      /** Seat player is currently sitting in */
-  UPROPERTY(BlueprintReadOnly, Category = "Train")
-  ARailsTrainSeat *CurrentSeat;
-
-public:
-  // ========== Animation Variables (PUBLIC for AnimBP access) ==========
-
-  /** Is the character currently sprinting? (for Animation Blueprint) */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
-  bool bIsSprinting = false;
-
-  /** Current speed of the character (for Animation Blueprint) */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
-  float CurrentSpeed = 0.0f;
-
-  /** Current movement direction (for Animation Blueprint) */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
-  float MovementDirection = 0.0f;
-
-  /** Is the character in the air? (for Animation Blueprint) */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Animation")
-  bool bIsInAir = false;
-
-  UFUNCTION(BlueprintCallable, Category = "Train")
-  void SetControlledTrain(ARailsTrain *Train) { ControlledTrain = Train; }
-
-  UFUNCTION(BlueprintPure, Category = "Train")
-  ARailsTrain *GetControlledTrain() const { return ControlledTrain; }
-
-  UFUNCTION(BlueprintCallable, Category = "Train")
-  void SetCurrentSeat(ARailsTrainSeat *Seat) { CurrentSeat = Seat; }
-
-
-public:
-  /** Constructor */
-  ARailsPlayerCharacter();
-
 protected:
-  /** Called when the game starts or when spawned */
-  virtual void BeginPlay() override;
+  // ========== Movement Input Handlers ==========
 
-  /** Called every frame */
-  virtual void Tick(float DeltaTime) override;
-
-  /** Initialize input action bindings */
-  virtual void SetupPlayerInputComponent(
-      class UInputComponent *PlayerInputComponent) override;
-
-  /** Setup camera attachment based on settings */
-  virtual void SetupCameraAttachment();
-
-  /** Update animation variables */
-  virtual void UpdateAnimationVariables();
-
-protected:
   /** Called for movement input */
   void Move(const FInputActionValue &Value);
 
   /** Called for looking input */
   void Look(const FInputActionValue &Value);
 
-  /** Called when sprint is started */
-  void StartSprint(const FInputActionValue &Value);
-
-  /** Called when sprint is stopped */
-  void StopSprint(const FInputActionValue &Value);
-
-  /** Called when interact button is pressed */
+  /** Called for interact input */
   void Interact(const FInputActionValue &Value);
 
-public:
-  /** Dynamically change camera socket at runtime */
-  UFUNCTION(BlueprintCallable, Category = "Camera")
-  void SetCameraSocket(FName NewSocketName, bool bIgnoreRotation = true);
+  // ========== APawn Interface ==========
+protected:
+  virtual void SetupPlayerInputComponent(UInputComponent *PlayerInputComponent) override;
 
-  /** Reset camera to default attachment (root component) */
-  UFUNCTION(BlueprintCallable, Category = "Camera")
-  void ResetCameraToDefault();
+  virtual void BeginPlay() override;
 
-  /** Start sprinting */
-  UFUNCTION(BlueprintCallable, Category = "Movement")
-  void DoStartSprint();
-
-  /** Stop sprinting */
-  UFUNCTION(BlueprintCallable, Category = "Movement")
-  void DoStopSprint();
-
-  /** Handles move inputs from either controls or UI interfaces */
-  UFUNCTION(BlueprintCallable, Category = "Input")
-  virtual void DoMove(float Right, float Forward);
-
-  /** Handles look inputs from either controls or UI interfaces */
-  UFUNCTION(BlueprintCallable, Category = "Input")
-  virtual void DoLook(float Yaw, float Pitch);
-
-  /** Handles jump pressed inputs from either controls or UI interfaces */
-  UFUNCTION(BlueprintCallable, Category = "Input")
-  virtual void DoJumpStart();
-
-  /** Handles jump pressed inputs from either controls or UI interfaces */
-  UFUNCTION(BlueprintCallable, Category = "Input")
-  virtual void DoJumpEnd();
-
-  /** Attempt to interact with the object in focus */
-  UFUNCTION(BlueprintCallable, Category = "Interaction")
-  virtual void DoInteract();
+  // ========== Train System ==========
+protected:
+  /** Current train the player is on (null if not on train) */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Train")
+  ARailsTrain *CurrentTrain;
 
 public:
-  /** Returns CameraBoom subobject **/
-  FORCEINLINE class USpringArmComponent *GetCameraBoom() const {
-    return CameraBoom;
-  }
+  /**
+   * Get the train the player is currently on
+   * @return Current train reference, or nullptr if not on train
+   */
+  UFUNCTION(BlueprintPure, Category = "Train")
+  ARailsTrain *GetCurrentTrain() const { return CurrentTrain; }
 
-  /** Returns FollowCamera subobject **/
-  FORCEINLINE class UCameraComponent *GetFollowCamera() const {
-    return FollowCamera;
-  }
+  /**
+   * Set the current train (called by train when player enters/exits)
+   * @param Train - Train reference, or nullptr to clear
+   */
+  UFUNCTION(BlueprintCallable, Category = "Train")
+  void SetCurrentTrain(ARailsTrain *Train);
 
-  /** Returns InteractionComponent subobject **/
-  FORCEINLINE class UInteractionComponent *GetInteractionComponent() const {
-    return InteractionComponent;
-  }
-
-  /** Returns whether character is sprinting */
-  FORCEINLINE bool IsSprinting() const { return bIsSprinting; }
-
-  /** Returns current speed */
-  FORCEINLINE float GetCurrentSpeed() const { return CurrentSpeed; }
-
-  /** Returns movement direction */
-  FORCEINLINE float GetMovementDirection() const { return MovementDirection; }
-
-  /** Returns whether character is in air */
-  FORCEINLINE bool IsInAir() const { return bIsInAir; }
+  /**
+   * Check if player is currently on a train
+   * @return true if on train, false otherwise
+   */
+  UFUNCTION(BlueprintPure, Category = "Train")
+  bool IsOnTrain() const { return CurrentTrain != nullptr; }
 };
