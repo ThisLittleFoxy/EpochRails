@@ -9,11 +9,27 @@
 
 class UStaticMeshComponent;
 class ARailsPlayerCharacter;
+class UAnimMontage;
+
+/**
+ * Enum defining types of interactions for animation selection
+ */
+UENUM(BlueprintType)
+enum class EInteractionType : uint8 {
+  None UMETA(DisplayName = "None"),
+  Pickup UMETA(DisplayName = "Pickup"),
+  Sit UMETA(DisplayName = "Sit/Stand"),
+  OpenDoor UMETA(DisplayName = "Open Door"),
+  PullLever UMETA(DisplayName = "Pull Lever"),
+  PressButton UMETA(DisplayName = "Press Button"),
+  Custom UMETA(DisplayName = "Custom")
+};
 
 /**
  * Base class for interactable actors
  * Extend this in Blueprint to create custom interactable objects
- * Provides default implementation of InteractableInterface with Blueprint events
+ * Provides default implementation of InteractableInterface with Blueprint
+ * events Supports custom animations for different interaction types
  */
 UCLASS(Blueprintable)
 class EPOCHRAILS_API AInteractableActor : public AActor,
@@ -50,8 +66,8 @@ public:
    * Override in Blueprint for custom interaction logic
    * @return true if interaction was successful
    */
-  virtual bool OnInteract_Implementation(
-      ARailsPlayerCharacter *PlayerCharacter) override;
+  virtual bool
+  OnInteract_Implementation(ARailsPlayerCharacter *PlayerCharacter) override;
 
   /**
    * Get the name to display when player looks at this object
@@ -75,6 +91,44 @@ public:
   virtual float GetInteractionDistance_Implementation() const override;
 
 protected:
+  // ========== Animation System ==========
+
+  /**
+   * Play interaction animation on the character
+   * @param PlayerCharacter - Character to play animation on
+   * @return true if animation started successfully
+   */
+  UFUNCTION(BlueprintCallable, Category = "Interaction|Animation")
+  bool PlayInteractionAnimation(ARailsPlayerCharacter *PlayerCharacter);
+
+  /**
+   * Get the animation montage for current interaction type
+   * @return Animation montage to play, or nullptr if none
+   */
+  UFUNCTION(BlueprintCallable, BlueprintPure,
+            Category = "Interaction|Animation")
+  UAnimMontage *GetInteractionAnimationMontage() const;
+
+  /**
+   * Called when interaction animation completes
+   */
+  UFUNCTION(BlueprintCallable, Category = "Interaction|Animation")
+  void OnInteractionAnimationComplete(ARailsPlayerCharacter *PlayerCharacter);
+
+  /**
+   * Blueprint event called when animation starts
+   */
+  UFUNCTION(BlueprintImplementableEvent, Category = "Interaction|Animation",
+            meta = (DisplayName = "On Animation Start"))
+  void BP_OnAnimationStart(ARailsPlayerCharacter *PlayerCharacter);
+
+  /**
+   * Blueprint event called when animation completes
+   */
+  UFUNCTION(BlueprintImplementableEvent, Category = "Interaction|Animation",
+            meta = (DisplayName = "On Animation Complete"))
+  void BP_OnAnimationComplete(ARailsPlayerCharacter *PlayerCharacter);
+
   // ========== Blueprint Events ==========
 
   /**
@@ -131,4 +185,72 @@ protected:
   /** Enable debug logging for this interactable */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction|Debug")
   bool bEnableDebugLog = false;
+
+  // ========== Animation Settings ==========
+
+  /** Type of interaction for animation selection */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            Category = "Interaction|Animation")
+  EInteractionType InteractionType = EInteractionType::None;
+
+  /** Should play animation on interaction? */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            Category = "Interaction|Animation")
+  bool bPlayAnimationOnInteract = false;
+
+  /** Custom animation montage to play (overrides InteractionType if set) */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            Category = "Interaction|Animation")
+  UAnimMontage *CustomAnimationMontage = nullptr;
+
+  /** Animation play rate multiplier */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            Category = "Interaction|Animation",
+            meta = (ClampMin = "0.1", ClampMax = "5.0"))
+  float AnimationPlayRate = 1.0f;
+
+  /** Should the interaction complete immediately or wait for animation? */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            Category = "Interaction|Animation")
+  bool bWaitForAnimationComplete = true;
+
+  /** Section name to play in the animation montage (optional) */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            Category = "Interaction|Animation")
+  FName AnimationSectionName = NAME_None;
+
+  // ========== Animation Montage References ==========
+
+  /** Default pickup animation montage */
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+            Category = "Interaction|Animation|Defaults")
+  UAnimMontage *PickupAnimationMontage = nullptr;
+
+  /** Default sit/stand animation montage */
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+            Category = "Interaction|Animation|Defaults")
+  UAnimMontage *SitAnimationMontage = nullptr;
+
+  /** Default door opening animation montage */
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+            Category = "Interaction|Animation|Defaults")
+  UAnimMontage *OpenDoorAnimationMontage = nullptr;
+
+  /** Default lever pull animation montage */
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+            Category = "Interaction|Animation|Defaults")
+  UAnimMontage *PullLeverAnimationMontage = nullptr;
+
+  /** Default button press animation montage */
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+            Category = "Interaction|Animation|Defaults")
+  UAnimMontage *PressButtonAnimationMontage = nullptr;
+
+private:
+  /** Cache reference to character currently playing animation */
+  UPROPERTY()
+  ARailsPlayerCharacter *AnimatingCharacter = nullptr;
+
+  /** Delegate handle for animation complete callback */
+  FTimerHandle AnimationCompleteTimerHandle;
 };
