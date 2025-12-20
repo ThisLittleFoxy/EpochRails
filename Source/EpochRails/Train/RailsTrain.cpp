@@ -4,6 +4,7 @@
 #include "EpochRails.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/WidgetComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "RailsSplinePath.h"
@@ -15,6 +16,7 @@
 #include "Engine/LocalPlayer.h"
 #include "GameFramework/PlayerController.h"
 #include "Character/RailsPlayerCharacter.h"
+#include "TrainSpeedometerWidget.h"
 
 ARailsTrain::ARailsTrain() {
   PrimaryActorTick.bCanEverTick = true;
@@ -41,14 +43,13 @@ ARailsTrain::ARailsTrain() {
 
   // Create physics component
   PhysicsComponent = CreateDefaultSubobject<UTrainPhysicsComponent>(TEXT("PhysicsComponent"));
+
   // NEW: Create trigger box for train interior
   TrainInteriorTrigger =
       CreateDefaultSubobject<UBoxComponent>(TEXT("TrainInteriorTrigger"));
   TrainInteriorTrigger->SetupAttachment(RootComponent);
-
   // Set box size (adjust these values based on your train model size)
   TrainInteriorTrigger->SetBoxExtent(FVector(500.f, 250.f, 200.f));
-
   // Set collision to trigger only
   TrainInteriorTrigger->SetCollisionProfileName(TEXT("Trigger"));
   TrainInteriorTrigger->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
@@ -57,6 +58,27 @@ ARailsTrain::ARailsTrain() {
 
   // Initialize IMC priority
   IMCPriority = 0;
+
+  // Create control panel mesh
+  ControlPanelMesh =
+      CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ControlPanelMesh"));
+  ControlPanelMesh->SetupAttachment(TrainRoot);
+  // Set position where you want control panel (adjust to your train model)
+  ControlPanelMesh->SetRelativeLocation(FVector(250.0f, 0.0f, 120.0f));
+  ControlPanelMesh->SetRelativeRotation(FRotator(0.0f, 0.0f, 0.0f));
+  ControlPanelMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+  // Create speedometer widget component
+  SpeedometerWidgetComponent =
+      CreateDefaultSubobject<UWidgetComponent>(TEXT("SpeedometerWidget"));
+  SpeedometerWidgetComponent->SetupAttachment(ControlPanelMesh);
+  SpeedometerWidgetComponent->SetRelativeLocation(SpeedometerRelativeLocation);
+  SpeedometerWidgetComponent->SetRelativeRotation(SpeedometerRelativeRotation);
+  SpeedometerWidgetComponent->SetDrawSize(SpeedometerDrawSize);
+  SpeedometerWidgetComponent->SetWidgetSpace(SpeedometerWidgetSpace);
+  SpeedometerWidgetComponent->SetCollisionEnabled(
+      ECollisionEnabled::NoCollision);
+  SpeedometerWidgetComponent->SetVisibility(bShowSpeedometer);
 }
 
 void ARailsTrain::BeginPlay() {
@@ -82,6 +104,8 @@ void ARailsTrain::BeginPlay() {
     UE_LOG(LogEpochRails, Log,
            TEXT("Train interior trigger configured for train: %s"), *GetName());
   }
+  // Initialize speedometer
+  InitializeSpeedometer();
 }
 
 void ARailsTrain::Tick(float DeltaTime) {
@@ -94,6 +118,8 @@ void ARailsTrain::Tick(float DeltaTime) {
   if (bShowPhysicsDebug && bUsePhysicsSimulation) {
     DrawPhysicsDebug();
   }
+  // Update speedometer display
+  UpdateSpeedometerDisplay();
 }
 
 // ========== Movement Functions ==========
@@ -629,5 +655,70 @@ void ARailsTrain::OnTrainInteriorEndOverlap(
   ARailsPlayerCharacter *Player = Cast<ARailsPlayerCharacter>(OtherActor);
   if (Player) {
     OnPlayerExitTrain(Player);
+  }
+}
+
+void ARailsTrain::InitializeSpeedometer() {
+  if (!SpeedometerWidgetComponent) {
+    UE_LOG(LogTemp, Warning,
+           TEXT("ARailsTrain::InitializeSpeedometer - "
+                "SpeedometerWidgetComponent is null!"));
+    return;
+  }
+
+  // Set widget class if provided
+  if (SpeedometerWidgetClass) {
+    SpeedometerWidgetComponent->SetWidgetClass(SpeedometerWidgetClass);
+  } else {
+    UE_LOG(LogTemp, Warning,
+           TEXT("ARailsTrain::InitializeSpeedometer - SpeedometerWidgetClass "
+                "not set!"));
+    return;
+  }
+
+  // Get widget instance
+  if (UUserWidget *UserWidget =
+          SpeedometerWidgetComponent->GetUserWidgetObject()) {
+    CachedSpeedometerWidget = Cast<UTrainSpeedometerWidget>(UserWidget);
+
+    if (CachedSpeedometerWidget) {
+      // Initialize with max speed
+      CachedSpeedometerWidget->SetMaxSpeed(SpeedometerMaxSpeed);
+      CachedSpeedometerWidget->SetSpeedImmediate(0.0f);
+
+      UE_LOG(LogTemp, Log,
+             TEXT("ARailsTrain::InitializeSpeedometer - Speedometer "
+                  "initialized successfully"));
+    } else {
+      UE_LOG(LogTemp, Warning,
+             TEXT("ARailsTrain::InitializeSpeedometer - Failed to cast to "
+                  "UTrainSpeedometerWidget!"));
+    }
+  }
+}
+
+void ARailsTrain::UpdateSpeedometerDisplay() {
+  if (CachedSpeedometerWidget) {
+    // Get current speed in km/h
+    float SpeedKmh = GetCurrentSpeedKmh();
+
+    // Update speedometer
+    CachedSpeedometerWidget->UpdateSpeed(SpeedKmh, SpeedometerMaxSpeed);
+  }
+}
+
+void ARailsTrain::SetSpeedometerVisible(bool bVisible) {
+  bShowSpeedometer = bVisible;
+
+  if (SpeedometerWidgetComponent) {
+    SpeedometerWidgetComponent->SetVisibility(bVisible);
+  }
+}
+
+void ARailsTrain::SetSpeedometerMaxSpeed(float NewMaxSpeed) {
+  SpeedometerMaxSpeed = FMath::Max(NewMaxSpeed, 10.0f);
+
+  if (CachedSpeedometerWidget) {
+    CachedSpeedometerWidget->SetMaxSpeed(SpeedometerMaxSpeed);
   }
 }

@@ -1,10 +1,12 @@
-// RailsTrain.h
+﻿// RailsTrain.h
 #pragma once
 
-#include "Components/SplineComponent.h"
 #include "CoreMinimal.h"
+#include "Components/SplineComponent.h"
+#include "Components/WidgetComponent.h"
 #include "GameFramework/Actor.h"
 #include "TrainPhysicsComponent.h"
+#include "TrainSpeedometerWidget.h"
 #include "RailsTrain.generated.h"
 
 class UBoxComponent;
@@ -20,13 +22,6 @@ enum class ETrainState : uint8 {
   Decelerating UMETA(DisplayName = "Decelerating")
 };
 
-/**
- * Base class for trains that move along spline paths
- * Characters can board and ride on train platforms
- * Does not modify character class - uses attachment system
- * 
- * NEW: Integrated with TrainPhysicsComponent for realistic physics simulation
- */
 UCLASS(Blueprintable)
 class EPOCHRAILS_API ARailsTrain : public AActor {
   GENERATED_BODY()
@@ -66,21 +61,6 @@ protected:
   /** Use physics simulation for movement (recommended) */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
   bool bUsePhysicsSimulation = true;
-
-  /** Maximum speed of the train (cm/s) - DEPRECATED: Use PhysicsComponent parameters instead */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Legacy",
-            meta = (ClampMin = "0.0", EditCondition = "!bUsePhysicsSimulation"))
-  float MaxSpeed = 2000.0f;
-
-  /** Acceleration rate (cm/s²) - DEPRECATED: Use PhysicsComponent parameters instead */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Legacy",
-            meta = (ClampMin = "0.0", EditCondition = "!bUsePhysicsSimulation"))
-  float AccelerationRate = 500.0f;
-
-  /** Deceleration rate (cm/s²) - DEPRECATED: Use PhysicsComponent parameters instead */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Legacy",
-            meta = (ClampMin = "0.0", EditCondition = "!bUsePhysicsSimulation"))
-  float DecelerationRate = 800.0f;
 
   /** Current speed of the train (cm/s) */
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
@@ -143,10 +123,68 @@ protected:
   /** Priority for IMC when added to input subsystem */
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Train|Input")
   int32 IMCPriority = 0;
+  // Deleted
+  /** Maximum speed of the train (cm/s) - Used for legacy mode and speedometer
+   * display */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Legacy",
+            meta = (ClampMin = "0.0", EditCondition = "!bUsePhysicsSimulation"))
+  float MaxSpeed = 2000.0f;
+
+  /** Acceleration rate (cm/s²) - Used for legacy mode */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Legacy",
+            meta = (ClampMin = "0.0", EditCondition = "!bUsePhysicsSimulation"))
+  float AccelerationRate = 500.0f;
+
+  /** Deceleration rate (cm/s²) - Used for legacy mode */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Legacy",
+            meta = (ClampMin = "0.0", EditCondition = "!bUsePhysicsSimulation"))
+  float DecelerationRate = 800.0f;
+
+protected:
+  // ========== UI Components ==========
+
+  /** Control panel mesh for mounting speedometer and other UI elements */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|UI")
+  UStaticMeshComponent *ControlPanelMesh;
+
+  /** Widget component that displays speedometer on control panel */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|UI")
+  UWidgetComponent *SpeedometerWidgetComponent;
+
+  // ========== Speedometer Settings ==========
+
+  /** Blueprint class for speedometer widget (set this in BP) */
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|Speedometer")
+  TSubclassOf<UTrainSpeedometerWidget> SpeedometerWidgetClass;
+
+  /** Position offset of speedometer relative to control panel */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Speedometer")
+  FVector SpeedometerRelativeLocation = FVector(10.0f, 0.0f, 50.0f);
+
+  /** Rotation of speedometer widget (to face player) */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Speedometer")
+  FRotator SpeedometerRelativeRotation = FRotator(0.0f, 180.0f, 0.0f);
+
+  /** Screen size of speedometer widget (width x height) */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Speedometer")
+  FVector2D SpeedometerDrawSize = FVector2D(400.0f, 120.0f);
+
+  /** Widget space mode (World or Screen) */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Speedometer")
+  EWidgetSpace SpeedometerWidgetSpace = EWidgetSpace::World;
 
 
-  // ========== Private Variables ==========
+  /** Maximum speed to display on speedometer (km/h) */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Speedometer",
+            meta = (ClampMin = "50.0", ClampMax = "500.0"))
+  float SpeedometerMaxSpeed = 150.0f;
+
+  /** Enable speedometer visibility */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Speedometer")
+  bool bShowSpeedometer = true;
+
 private:
+  // ========== Private Variables ==========
   /** Cached spline component for performance */
   USplineComponent *CachedSplineComponent = nullptr;
 
@@ -194,15 +232,11 @@ protected:
   /** Draw debug information for physics */
   void DrawPhysicsDebug();
 
-  // ===== СТАРЫЙ КОД - УДАЛИТЕ ЭТИ СТРОКИ =====
-  // Collision Events
-  // Called when something enters boarding zone
-  // UFUNCTION()
-  // void OnBoardingZoneBeginOverlap(...);
-  // UFUNCTION()
-  // void OnBoardingZoneEndOverlap(...);
+  /** Initialize speedometer widget */
+  void InitializeSpeedometer();
 
-  // ===== НОВЫЙ КОД - ОСТАВЬТЕ ТОЛЬКО ЭТО =====
+  /** Update speedometer display with current train speed */
+  void UpdateSpeedometerDisplay();
 
   /** List of passengers currently inside the train */
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Train|Passengers")
@@ -248,7 +282,6 @@ public:
   /** Called when player exits the train interior */
   UFUNCTION(BlueprintCallable, Category = "Train|Passengers")
   void OnPlayerExitTrain(ARailsPlayerCharacter *Character);
-
 
   // ========== Public API ==========
 
@@ -321,4 +354,24 @@ public:
   /** Remove wagons from the train */
   UFUNCTION(BlueprintCallable, Category = "Train Control")
   void RemoveWagons(int32 Count);
+
+  /** Cached reference to speedometer widget for fast access */
+  UPROPERTY()
+  UTrainSpeedometerWidget *CachedSpeedometerWidget = nullptr;
+
+  // ========== Speedometer Control ==========
+
+  /** Get reference to speedometer widget */
+  UFUNCTION(BlueprintPure, Category = "Train Control|UI")
+  UTrainSpeedometerWidget *GetSpeedometerWidget() const {
+    return CachedSpeedometerWidget;
+  }
+
+  /** Set speedometer visibility */
+  UFUNCTION(BlueprintCallable, Category = "Train Control|UI")
+  void SetSpeedometerVisible(bool bVisible);
+
+  /** Update speedometer maximum speed */
+  UFUNCTION(BlueprintCallable, Category = "Train Control|UI")
+  void SetSpeedometerMaxSpeed(float NewMaxSpeed);
 };
