@@ -2,16 +2,18 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "CoreMinimal.h"
 #include "InteractionComponent.generated.h"
 
 class IInteractableInterface;
 class ARailsPlayerCharacter;
+class UWidgetInteractionComponent;
 
 /**
  * Component that handles interaction detection and execution
  * Add this to your player character to enable interaction with objects
+ * Also handles UI widget interactions via crosshair
  */
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class EPOCHRAILS_API UInteractionComponent : public UActorComponent {
@@ -22,16 +24,38 @@ public:
   UInteractionComponent();
 
   // Called every frame
-  virtual void TickComponent(float DeltaTime, ELevelTick TickType,
-                             FActorComponentTickFunction *ThisTickFunction) override;
+  virtual void
+  TickComponent(float DeltaTime, ELevelTick TickType,
+                FActorComponentTickFunction *ThisTickFunction) override;
 
   /**
-   * Attempt to interact with the currently focused object
-   * Call this from your input action
+   * Attempt to interact with the currently focused object or UI widget
+   * Call this from your input action (E key)
    * @return true if interaction was successful
    */
   UFUNCTION(BlueprintCallable, Category = "Interaction")
   bool TryInteract();
+
+  /**
+   * Handle UI widget click (for mouse button)
+   * Call this from Fire input action press
+   */
+  UFUNCTION(BlueprintCallable, Category = "Interaction")
+  void PressWidgetInteraction();
+
+  /**
+   * Release UI widget click
+   * Call this when Fire input is released
+   */
+  UFUNCTION(BlueprintCallable, Category = "Interaction")
+  void ReleaseWidgetInteraction();
+
+  /**
+   * Check if currently hovering over an interactive widget
+   * @return true if a UI widget is under crosshair
+   */
+  UFUNCTION(BlueprintPure, Category = "Interaction")
+  bool IsHoveringWidget() const;
 
   /**
    * Get the currently focused interactable object
@@ -67,6 +91,15 @@ public:
    */
   UFUNCTION(BlueprintPure, Category = "Interaction")
   bool CanInteractWithFocusedActor() const;
+
+  /**
+   * Get the widget interaction component
+   * @return Widget interaction component reference
+   */
+  UFUNCTION(BlueprintPure, Category = "Interaction")
+  UWidgetInteractionComponent *GetWidgetInteractionComponent() const {
+    return WidgetInteraction;
+  }
 
 protected:
   // Called when the game starts
@@ -110,6 +143,16 @@ protected:
             meta = (EditCondition = "bShowDebugTrace"))
   float DebugTraceDuration = 0.1f;
 
+  // ========== Widget Interaction Settings ==========
+
+  /** Enable widget interaction via crosshair */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction|Widget")
+  bool bEnableWidgetInteraction = true;
+
+  /** Show debug visualization for widget interaction */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction|Widget")
+  bool bShowWidgetDebug = false;
+
 private:
   /** Currently focused interactable actor */
   TWeakObjectPtr<AActor> FocusedActor;
@@ -120,4 +163,8 @@ private:
   /** Cached player character reference */
   UPROPERTY()
   ARailsPlayerCharacter *OwningCharacter;
+
+  /** Widget interaction component for UI */
+  UPROPERTY()
+  UWidgetInteractionComponent *WidgetInteraction;
 };
