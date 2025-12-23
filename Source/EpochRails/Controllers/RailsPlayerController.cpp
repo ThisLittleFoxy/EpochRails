@@ -12,6 +12,16 @@
 #include "InputMappingContext.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
+// FIXED CONSTRUCTOR
+ARailsPlayerController::ARailsPlayerController() {
+  // Enable widget interaction
+  bShowMouseCursor = false;
+  bEnableClickEvents = true;
+  bEnableTouchEvents = true;
+  bEnableMouseOverEvents = false;
+  bEnableTouchOverEvents = false;
+}
+
 void ARailsPlayerController::BeginPlay() {
   Super::BeginPlay();
 
@@ -275,5 +285,27 @@ void ARailsPlayerController::Jump(const FInputActionValue &Value) {
   if (ACharacter *ControlledCharacter = Cast<ACharacter>(GetPawn())) {
     ControlledCharacter->Jump();
     UE_LOG(LogEpochRails, Log, TEXT("Jump executed on character"));
+  }
+}
+
+void ARailsPlayerController::SetMouseCursorVisible(bool bVisible) {
+  bShowMouseCursor = bVisible;
+  bIsInteractingWithUI = bVisible;
+
+  // Set input mode based on cursor visibility
+  if (bVisible) {
+    // Allow both game and UI input
+    FInputModeGameAndUI InputMode;
+    InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+    InputMode.SetHideCursorDuringCapture(false);
+    SetInputMode(InputMode);
+
+    UE_LOG(LogEpochRails, Log, TEXT("Mouse cursor enabled for UI interaction"));
+  } else {
+    // Game input only
+    FInputModeGameOnly InputMode;
+    SetInputMode(InputMode);
+
+    UE_LOG(LogEpochRails, Log, TEXT("Mouse cursor disabled, game mode active"));
   }
 }

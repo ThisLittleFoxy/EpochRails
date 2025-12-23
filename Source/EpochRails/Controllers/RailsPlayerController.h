@@ -17,6 +17,10 @@ UCLASS(abstract)
 class ARailsPlayerController : public APlayerController {
   GENERATED_BODY()
 
+public:
+  // ADD THIS CONSTRUCTOR DECLARATION
+  ARailsPlayerController();
+
 protected:
   /** Input Mapping Contexts */
   UPROPERTY(EditAnywhere, Category = "Input|Input Mappings")
@@ -38,6 +42,14 @@ protected:
    * mobile platforms */
   UPROPERTY(EditAnywhere, Config, Category = "Input|Touch Controls")
   bool bForceTouchControls = false;
+
+      /** Show/hide mouse cursor */
+  UFUNCTION(BlueprintCallable, Category = "UI")
+  void SetMouseCursorVisible(bool bVisible);
+
+  /** Currently interacting with UI widget */
+  UPROPERTY(BlueprintReadOnly, Category = "UI")
+  bool bIsInteractingWithUI = false;
 
   /** Gameplay initialization */
   virtual void BeginPlay() override;
@@ -65,4 +77,5 @@ protected:
   /** Jump input handler */
   UFUNCTION()
   void Jump(const FInputActionValue &Value);
+
 };

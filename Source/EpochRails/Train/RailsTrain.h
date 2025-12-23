@@ -1,9 +1,10 @@
 ﻿// RailsTrain.h
+
 #pragma once
 
-#include "CoreMinimal.h"
 #include "Components/SplineComponent.h"
 #include "Components/WidgetComponent.h"
+#include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "TrainPhysicsComponent.h"
 #include "TrainSpeedometerWidget.h"
@@ -12,7 +13,6 @@
 class UBoxComponent;
 class UInputMappingContext;
 class UEnhancedInputLocalPlayerSubsystem;
-
 
 UENUM(BlueprintType)
 enum class ETrainState : uint8 {
@@ -48,8 +48,9 @@ protected:
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
   class UBoxComponent *BoardingZone;
 
-  /** Physics component for realistic train simulation */
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+/** Train physics simulation component */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Components",
+            meta = (AllowPrivateAccess = "true"))
   UTrainPhysicsComponent *PhysicsComponent;
 
   // ========== Movement Settings ==========
@@ -100,8 +101,6 @@ protected:
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
   ETrainState TrainState = ETrainState::Stopped;
 
-  /** Characters currently on the train platform */
-
   /** Current throttle position (-1.0 to 1.0) */
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
   float CurrentThrottle = 0.0f;
@@ -110,7 +109,38 @@ protected:
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
   float CurrentBrake = 0.0f;
 
-    // ===== NEW: Input Mapping Contexts for passengers =====
+  /** Engine running state */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
+  bool bEngineRunning = false;
+
+  /** Reverse multiplier (1.0 = forward, -1.0 = reverse) */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
+  float ReverseMultiplier = 1.0f;
+  // ========== Gear System ==========
+
+  /** Current gear (0 = neutral, 1-3 = forward gears) */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
+  int32 CurrentGear = 0;
+
+  /** Maximum number of gears */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Gears",
+            meta = (ClampMin = "1", ClampMax = "10"))
+  int32 MaxGears = 3;
+
+  /** Speed multiplier for each gear (index 0 = gear 1) */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Gears")
+  TArray<float> GearSpeedMultipliers = {0.3f, 0.6f, 1.0f};
+
+  /** Time delay between gear shifts (seconds) */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Gears",
+            meta = (ClampMin = "0.0", ClampMax = "5.0"))
+  float GearShiftDelay = 0.5f;
+
+  /** Throttle acceleration rate per gear */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Gears")
+  TArray<float> GearAccelerationRates = {0.2f, 0.15f, 0.1f};
+
+  // ===== Input Mapping Contexts for passengers =====
 
   /** Default IMC used outside the train (with jump) */
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Train|Input")
@@ -123,7 +153,8 @@ protected:
   /** Priority for IMC when added to input subsystem */
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Train|Input")
   int32 IMCPriority = 0;
-  // Deleted
+
+  // Legacy mode settings
   /** Maximum speed of the train (cm/s) - Used for legacy mode and speedometer
    * display */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Legacy",
@@ -140,16 +171,19 @@ protected:
             meta = (ClampMin = "0.0", EditCondition = "!bUsePhysicsSimulation"))
   float DecelerationRate = 800.0f;
 
-protected:
   // ========== UI Components ==========
 
-  /** Control panel mesh for mounting speedometer and other UI elements */
+  /** Control panel mesh for mounting UI elements */
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|UI")
   UStaticMeshComponent *ControlPanelMesh;
 
   /** Widget component that displays speedometer on control panel */
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|UI")
   UWidgetComponent *SpeedometerWidgetComponent;
+
+  /** Widget component for interactive control panel */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|UI")
+  UWidgetComponent *ControlPanelWidgetComponent;
 
   // ========== Speedometer Settings ==========
 
@@ -173,7 +207,6 @@ protected:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Speedometer")
   EWidgetSpace SpeedometerWidgetSpace = EWidgetSpace::World;
 
-
   /** Maximum speed to display on speedometer (km/h) */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Speedometer",
             meta = (ClampMin = "50.0", ClampMax = "500.0"))
@@ -183,8 +216,31 @@ protected:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|Speedometer")
   bool bShowSpeedometer = true;
 
+  // ========== Control Panel Settings ==========
+
+  /** Blueprint widget class for control panel (set this in BP) */
+  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|ControlPanel")
+  TSubclassOf<UUserWidget> ControlPanelWidgetClass;
+
+  /** Position offset of control panel relative to mesh */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|ControlPanel")
+  FVector ControlPanelRelativeLocation = FVector(15.0f, 0.0f, 60.0f);
+
+  /** Rotation of control panel widget */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|ControlPanel")
+  FRotator ControlPanelRelativeRotation = FRotator(0.0f, 180.0f, 0.0f);
+
+  /** Screen size of control panel widget */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|ControlPanel")
+  FVector2D ControlPanelDrawSize = FVector2D(800.0f, 600.0f);
+
+  /** Enable control panel visibility */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI|ControlPanel")
+  bool bShowControlPanel = true;
+
 private:
   // ========== Private Variables ==========
+
   /** Cached spline component for performance */
   USplineComponent *CachedSplineComponent = nullptr;
 
@@ -194,6 +250,14 @@ private:
   /** Current smoothed track curvature */
   float SmoothedCurvature = 0.0f;
 
+  /** Time since last gear shift */
+  float TimeSinceLastGearShift = 0.0f;
+
+  /** Can shift gear right now? */
+  bool CanShiftGear() const;
+
+  /** Is brake button currently held? */
+  bool bBrakeButtonHeld = false;
   // ========== Lifecycle ==========
 
 public:
@@ -235,6 +299,9 @@ protected:
   /** Initialize speedometer widget */
   void InitializeSpeedometer();
 
+  /** Initialize control panel widget */
+  void InitializeControlPanel();
+
   /** Update speedometer display with current train speed */
   void UpdateSpeedometerDisplay();
 
@@ -269,7 +336,7 @@ protected:
                                  int32 OtherBodyIndex);
 
 public:
-  // ===== NEW: Passenger management =====
+  // ===== Passenger management =====
 
   /** Check if character is currently inside the train */
   UFUNCTION(BlueprintCallable, Category = "Train|Passengers")
@@ -345,7 +412,9 @@ public:
 
   /** Get reference to physics component */
   UFUNCTION(BlueprintPure, Category = "Train Control")
-  UTrainPhysicsComponent *GetPhysicsComponent() const { return PhysicsComponent; }
+  UTrainPhysicsComponent *GetPhysicsComponent() const {
+    return PhysicsComponent;
+  }
 
   /** Add wagons to the train */
   UFUNCTION(BlueprintCallable, Category = "Train Control")
@@ -354,6 +423,28 @@ public:
   /** Remove wagons from the train */
   UFUNCTION(BlueprintCallable, Category = "Train Control")
   void RemoveWagons(int32 Count);
+
+  // ========== NEW: Blueprint-Callable Control Functions ==========
+
+  /** Toggle engine on/off */
+  UFUNCTION(BlueprintCallable, Category = "Train Control")
+  void ToggleEngine();
+
+  /** Toggle reverse direction */
+  UFUNCTION(BlueprintCallable, Category = "Train Control")
+  void ToggleReverse();
+
+  /** Get engine running state */
+  UFUNCTION(BlueprintPure, Category = "Train Control")
+  bool IsEngineRunning() const { return bEngineRunning; }
+
+  /** Get reverse state (1.0 = forward, -1.0 = reverse) */
+  UFUNCTION(BlueprintPure, Category = "Train Control")
+  float GetReverseMultiplier() const { return ReverseMultiplier; }
+
+  /** Apply throttle for button press (incremental) */
+  UFUNCTION(BlueprintCallable, Category = "Train Control")
+  void IncreaseThrottle(float Amount = 0.1f);
 
   /** Cached reference to speedometer widget for fast access */
   UPROPERTY()
@@ -374,4 +465,34 @@ public:
   /** Update speedometer maximum speed */
   UFUNCTION(BlueprintCallable, Category = "Train Control|UI")
   void SetSpeedometerMaxSpeed(float NewMaxSpeed);
+
+  // ========== Gear Control ==========
+
+  /** Shift to next gear (up) */
+  UFUNCTION(BlueprintCallable, Category = "Train Control")
+  void ShiftGearUp();
+
+  /** Shift to previous gear (down) */
+  UFUNCTION(BlueprintCallable, Category = "Train Control")
+  void ShiftGearDown();
+
+  /** Get current gear */
+  UFUNCTION(BlueprintPure, Category = "Train Control")
+  int32 GetCurrentGear() const { return CurrentGear; }
+
+  /** Get gear speed multiplier */
+  UFUNCTION(BlueprintPure, Category = "Train Control")
+  float GetCurrentGearSpeedMultiplier() const;
+
+  /** Get gear acceleration rate */
+  UFUNCTION(BlueprintPure, Category = "Train Control")
+  float GetCurrentGearAccelerationRate() const;
+
+  /** Start braking (call on button press) */
+  UFUNCTION(BlueprintCallable, Category = "Train Control")
+  void StartBraking();
+
+  /** Stop braking (call on button release) */
+  UFUNCTION(BlueprintCallable, Category = "Train Control")
+  void StopBraking();
 };

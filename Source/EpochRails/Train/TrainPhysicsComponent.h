@@ -9,55 +9,99 @@
 /**
  * Physics simulation parameters for realistic train behavior
  */
+/**
+ * Simplified physics parameters for train behavior
+ */
 USTRUCT(BlueprintType)
 struct FTrainPhysicsParameters
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
-	// Mass of the locomotive in kilograms (e.g., 80000 kg for average locomotive)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Mass")
-	float LocomotiveMass = 80000.0f;
+    // ========== Engine Settings ==========
+    
+    /** Engine power in kilowatts (kW) - affects acceleration */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Engine",
+        meta = (ClampMin = "100.0", ClampMax = "5000.0"))
+    float EnginePowerKW = 500.0f;
+    
+    /** Maximum speed in km/h */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Engine",
+        meta = (ClampMin = "10.0", ClampMax = "200.0"))
+    float MaxSpeedKmh = 60.0f;
+    
+    /** Acceleration rate multiplier (higher = faster acceleration) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Engine",
+        meta = (ClampMin = "0.1", ClampMax = "5.0"))
+    float AccelerationMultiplier = 1.0f;
+    
+    /** Braking power multiplier (higher = faster braking) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Engine",
+        meta = (ClampMin = "0.5", ClampMax = "3.0"))
+    float BrakingMultiplier = 1.5f;
 
-	// Mass per wagon in kilograms (e.g., 20000 kg empty, 80000 kg loaded)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Mass")
-	float WagonMass = 50000.0f;
+	// ========== Gear System ==========
 
-	// Number of wagons attached to locomotive
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Mass")
-	int32 WagonCount = 0;
+    /** Current gear (0 = neutral, 1+ = forward gears) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Gears")
+    int32 CurrentGear = 0;
 
-	// Maximum tractive force in Newtons (e.g., 400000 N for modern electric locomotive)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Power")
-	float MaxTractiveForce = 400000.0f;
+    /** Maximum number of gears */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Gears",
+              meta = (ClampMin = "1", ClampMax = "10"))
+    int32 MaxGears = 3;
 
-	// Maximum braking force in Newtons
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Power")
-	float MaxBrakingForce = 600000.0f;
+    /** Maximum speed for each gear in km/h */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Gears")
+    TArray<float> GearMaxSpeedsKmh = {30.0f, 60.0f, 100.0f};
 
-	// Rolling resistance coefficient (typical: 0.001-0.002)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Resistance")
-	float RollingResistanceCoefficient = 0.0015f;
+    /** Acceleration multiplier for each gear (higher = faster in that gear) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Gears")
+    TArray<float> GearAccelerationMultipliers = {1.5f, 1.2f, 1.0f};
 
-	// Air drag coefficient (Cd * A, typical: 5-10 for trains)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Resistance")
-	float AirDragCoefficient = 7.0f;
+	// ========== Direction Control ==========
 
-	// Curve resistance factor (additional resistance on curves)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Resistance")
-	float CurveResistanceFactor = 0.5f;
+    /** Direction multiplier (1.0 = forward, -1.0 = reverse) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Direction")
+    float DirectionMultiplier = 1.0f;
 
-	// Adhesion coefficient (wheel-rail friction, typical: 0.25-0.35)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Adhesion")
-	float AdhesionCoefficient = 0.30f;
+    /** Maximum speed in reverse as percentage of forward speed (0.0-1.0) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Direction",
+              meta = (ClampMin = "0.1", ClampMax = "1.0"))
+    float ReverseSpeedLimitPercent = 0.25f;
 
-	// Gravity constant (m/s²)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Environment")
-	float Gravity = 9.81f;
+    // ========== Train Configuration ==========
+    
+    /** Mass of the locomotive in kg */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Mass",
+        meta = (ClampMin = "10000.0", ClampMax = "200000.0"))
+    float LocomotiveMass = 50000.0f;
+    
+    /** Mass per wagon in kg */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Mass",
+        meta = (ClampMin = "5000.0", ClampMax = "100000.0"))
+    float WagonMass = 20000.0f;
+    
+    /** Number of wagons attached */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Mass")
+    int32 WagonCount = 0;
 
-	// Air density in kg/m³ (sea level: 1.225)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Environment")
-	float AirDensity = 1.225f;
+    // ========== Resistance Settings (optional tuning) ==========
+    
+    /** Rolling resistance coefficient (0.001-0.003) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Advanced",
+        meta = (ClampMin = "0.0005", ClampMax = "0.01"))
+    float RollingResistance = 0.002f;
+    
+    /** Air drag coefficient (affects high-speed resistance) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Advanced",
+        meta = (ClampMin = "1.0", ClampMax = "20.0"))
+    float AirDragCoefficient = 5.0f;
+    
+    /** Gravity constant */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Physics|Advanced")
+    float Gravity = 9.81f;
 };
+
 
 /**
  * Current state of train physics simulation
@@ -213,7 +257,31 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Train Physics")
 	float CalculateStoppingDistance() const;
 
-protected:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Train Physics|Debug")
+        bool bEnableDebugLogs = false;
+
+    /** Set current gear (0 = neutral, 1+ = gears) */
+    UFUNCTION(BlueprintCallable, Category = "Train Physics")
+        void SetGear(int32 NewGear);
+    UFUNCTION(BlueprintPure, Category = "Train Physics")
+    int32 GetCurrentGear() const { return PhysicsParameters.CurrentGear; }
+    /** Get max speed for current gear */
+    UFUNCTION(BlueprintPure, Category = "Train Physics")
+    float GetCurrentGearMaxSpeed() const;
+
+    /** Get acceleration multiplier for current gear */
+    UFUNCTION(BlueprintPure, Category = "Train Physics")
+    float GetCurrentGearAccelMultiplier() const;
+
+	/** Set direction (1.0 = forward, -1.0 = reverse) */
+    UFUNCTION(BlueprintCallable, Category = "Train Physics")
+    void SetDirection(float Direction);
+
+    /** Get current direction */
+    UFUNCTION(BlueprintPure, Category = "Train Physics")
+    float GetDirection() const { return PhysicsParameters.DirectionMultiplier; }
+
+  protected:
 	virtual void BeginPlay() override;
 
 private:
@@ -255,4 +323,8 @@ private:
 
 	// Smooth throttle/brake transitions
 	float SmoothInput(float Current, float Target, float DeltaTime, float SmoothingSpeed = 2.0f);
+
+	/** Internal absolute velocity (always positive) */
+    float AbsoluteVelocity = 0.0f;
+
 };
