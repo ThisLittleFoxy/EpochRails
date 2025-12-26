@@ -90,20 +90,6 @@ ARailsTrain::ARailsTrain() {
   ControlPanelWidgetComponent->SetWidgetSpace(EWidgetSpace::World);
   ControlPanelWidgetComponent->SetCollisionEnabled(
       ECollisionEnabled::QueryOnly);
-  // === LOAD WIDGET CLASSES IN CONSTRUCTOR ===
-  static ConstructorHelpers::FClassFinder<UUserWidget> SpeedometerWidgetFinder(
-      TEXT("/Game/Train/BP_Train/UI_Train/"
-           "WBP_TrainSpeedometer.WBP_TrainSpeedometer_C"));
-  if (SpeedometerWidgetFinder.Succeeded()) {
-    SpeedometerWidgetClass = SpeedometerWidgetFinder.Class;
-  }
-
-  static ConstructorHelpers::FClassFinder<UUserWidget> ControlPanelWidgetFinder(
-      TEXT("/Game/Train/BP_Train/UI_Train/"
-           "WBP_TrainControlPanel.WBP_TrainControlPanel_C"));
-  if (ControlPanelWidgetFinder.Succeeded()) {
-    ControlPanelWidgetClass = ControlPanelWidgetFinder.Class;
-  }
 }
 
 void ARailsTrain::BeginPlay() {
