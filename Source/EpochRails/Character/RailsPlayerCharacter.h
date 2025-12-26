@@ -102,12 +102,6 @@ protected:
   UPROPERTY(EditAnywhere, Category = "Input")
   UInputAction *InteractAction;
 
-    // === ADD THIS: Fire Input Action ===
-  /** Fire Input Action (weapon and UI interaction) */
-  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input,
-            meta = (AllowPrivateAccess = "true"))
-  class UInputAction *FireAction;
-
   /** Called when player applies throttle input */
   UFUNCTION()
   void OnThrottleInput(const FInputActionValue &Value);
@@ -130,12 +124,6 @@ protected:
       /** Seat player is currently sitting in */
   UPROPERTY(BlueprintReadOnly, Category = "Train")
   ARailsTrainSeat *CurrentSeat;
-
-  /** Handle fire button press (weapon or UI) */
-  void OnFirePressed(const FInputActionValue &Value);
-
-  /** Handle fire button release */
-  void OnFireReleased(const FInputActionValue &Value);
 
 public:
   // ========== Animation Variables (PUBLIC for AnimBP access) ==========
@@ -164,9 +152,7 @@ public:
 
   UFUNCTION(BlueprintCallable, Category = "Train")
   void SetCurrentSeat(ARailsTrainSeat *Seat) { CurrentSeat = Seat; }
-  
-  UFUNCTION(BlueprintCallable, Category = "Weapon")
-  void Fire();
+
 
 public:
   /** Constructor */

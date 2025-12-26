@@ -1,12 +1,11 @@
-// InteractionComponent.cpp
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "InteractionComponent.h"
-#include "Camera/CameraComponent.h"
+#include "InteractableInterface.h"
 #include "Character/RailsPlayerCharacter.h"
-#include "Components/WidgetInteractionComponent.h"
+#include "Camera/CameraComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
-#include "InteractableInterface.h"
 
 UInteractionComponent::UInteractionComponent() {
   // Enable ticking for this component
@@ -24,33 +23,6 @@ void UInteractionComponent::BeginPlay() {
   if (!OwningCharacter) {
     UE_LOG(LogTemp, Warning,
            TEXT("UInteractionComponent: Owner is not ARailsPlayerCharacter!"));
-    return;
-  }
-
-  // Create widget interaction component if enabled
-  if (bEnableWidgetInteraction) {
-    WidgetInteraction = NewObject<UWidgetInteractionComponent>(
-        OwningCharacter, TEXT("WidgetInteraction"));
-    if (WidgetInteraction) {
-      WidgetInteraction->RegisterComponent();
-
-      // Attach to camera
-      UCameraComponent *Camera = OwningCharacter->GetFollowCamera();
-      if (Camera) {
-        WidgetInteraction->AttachToComponent(
-            Camera, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-      }
-
-      // Configure widget interaction
-      WidgetInteraction->InteractionDistance = DefaultInteractionDistance;
-      WidgetInteraction->bEnableHitTesting = true;
-      WidgetInteraction->bShowDebug = bShowWidgetDebug;
-      WidgetInteraction->InteractionSource =
-          EWidgetInteractionSource::CenterScreen;
-
-      UE_LOG(LogTemp, Log,
-             TEXT("InteractionComponent: Widget interaction initialized"));
-    }
   }
 }
 
@@ -59,9 +31,6 @@ void UInteractionComponent::TickComponent(
     FActorComponentTickFunction *ThisTickFunction) {
   Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-  // Widget interaction is handled automatically by UWidgetInteractionComponent
-  // We only need to check for regular interactable objects
-
   // Don't check every frame for performance
   InteractionCheckTimer -= DeltaTime;
   if (InteractionCheckTimer > 0.0f) {
@@ -69,16 +38,7 @@ void UInteractionComponent::TickComponent(
   }
   InteractionCheckTimer = InteractionCheckFrequency;
 
-  // Skip regular interaction check if hovering over widget
-  if (IsHoveringWidget()) {
-    // Clear regular focused actor if hovering widget
-    if (FocusedActor.IsValid()) {
-      UpdateFocusedActor(nullptr);
-    }
-    return;
-  }
-
-  // Perform interaction trace for regular objects
+  // Perform interaction trace
   FHitResult HitResult;
   if (PerformInteractionTrace(HitResult)) {
     AActor *HitActor = HitResult.GetActor();
@@ -150,7 +110,7 @@ void UInteractionComponent::UpdateFocusedActor(AActor *NewFocusActor) {
         Cast<IInteractableInterface>(FocusedActor.Get());
     if (OldInteractable) {
       OldInteractable->Execute_OnInteractionFocusEnd(FocusedActor.Get(),
-                                                     OwningCharacter);
+                                                      OwningCharacter);
     }
   }
 
@@ -163,15 +123,12 @@ void UInteractionComponent::UpdateFocusedActor(AActor *NewFocusActor) {
         Cast<IInteractableInterface>(FocusedActor.Get());
     if (NewInteractable) {
       NewInteractable->Execute_OnInteractionFocusBegin(FocusedActor.Get(),
-                                                       OwningCharacter);
+                                                        OwningCharacter);
     }
   }
 }
 
 bool UInteractionComponent::TryInteract() {
-  // TryInteract is now ONLY for regular objects (E key)
-  // Widget interaction is handled separately via PressWidgetInteraction (LMB)
-
   if (!FocusedActor.IsValid() || !OwningCharacter) {
     return false;
   }
@@ -189,29 +146,6 @@ bool UInteractionComponent::TryInteract() {
 
   // Execute interaction
   return Interactable->Execute_OnInteract(FocusedActor.Get(), OwningCharacter);
-}
-
-
-void UInteractionComponent::PressWidgetInteraction() {
-  if (WidgetInteraction && IsHoveringWidget()) {
-    WidgetInteraction->PressPointerKey(EKeys::LeftMouseButton);
-    UE_LOG(LogTemp, Log, TEXT("InteractionComponent: Widget button pressed"));
-  }
-}
-
-void UInteractionComponent::ReleaseWidgetInteraction() {
-  if (WidgetInteraction) {
-    WidgetInteraction->ReleasePointerKey(EKeys::LeftMouseButton);
-    UE_LOG(LogTemp, Log, TEXT("InteractionComponent: Widget button released"));
-  }
-}
-
-bool UInteractionComponent::IsHoveringWidget() const {
-  if (!WidgetInteraction || !bEnableWidgetInteraction) {
-    return false;
-  }
-
-  return WidgetInteraction->IsOverInteractableWidget();
 }
 
 FText UInteractionComponent::GetFocusedActorName() const {

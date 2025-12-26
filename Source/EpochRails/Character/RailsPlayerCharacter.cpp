@@ -14,7 +14,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Train/RailsTrain.h"
 #include "Interaction/InteractionComponent.h"
-#include "Interaction/RailsTrainSeat.h"
+#include "Interaction/RailsTrainSeat.h"  // путь может быть другим
 #include "Interaction/InteractableInterface.h"
 
 ARailsPlayerCharacter::ARailsPlayerCharacter() {
@@ -241,20 +241,6 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
              TEXT("SprintAction is NULL! Please assign it in Blueprint."));
     }
 
-    // === ADD THIS: Fire action for weapon AND UI ===
-    if (FireAction) {
-      EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started,
-                                         this,
-                                         &ARailsPlayerCharacter::OnFirePressed);
-      EnhancedInputComponent->BindAction(
-          FireAction, ETriggerEvent::Completed, this,
-          &ARailsPlayerCharacter::OnFireReleased);
-      UE_LOG(LogEpochRails, Log, TEXT("Fire action bound successfully"));
-    } else {
-      UE_LOG(LogEpochRails, Warning,
-             TEXT("FireAction is NULL! Please assign it in Blueprint."));
-    }
-
     // Interacting
     if (InteractAction) {
       EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started,
@@ -299,7 +285,6 @@ void ARailsPlayerCharacter::SetupPlayerInputComponent(
            *GetNameSafe(this));
   }
 }
-
 
 void ARailsPlayerCharacter::StartSprint(const FInputActionValue &Value) {
   DoStartSprint();
@@ -399,38 +384,4 @@ void ARailsPlayerCharacter::OnBrakeInput(const FInputActionValue &Value) {
 
     UE_LOG(LogEpochRails, Verbose, TEXT("Brake input: %f"), BrakeValue);
   }
-}
-
-void ARailsPlayerCharacter::OnFirePressed(const FInputActionValue &Value) {
-  // Priority 1: Check if hovering over UI widget
-  if (InteractionComponent && InteractionComponent->IsHoveringWidget()) {
-    InteractionComponent->PressWidgetInteraction();
-    UE_LOG(LogTemp, Log, TEXT("Player: Pressed UI widget"));
-    return; // Don't fire weapon
-  }
-
-  // Priority 2: Fire weapon
-  UE_LOG(LogTemp, Log, TEXT("Player: Firing weapon"));
-  Fire();
-}
-
-void ARailsPlayerCharacter::OnFireReleased(const FInputActionValue &Value) {
-  // Always release widget interaction (safe to call even if not pressed)
-  if (InteractionComponent) {
-    InteractionComponent->ReleaseWidgetInteraction();
-  }
-
-  // If you have a StopFire() function, call it here
-  // StopFire();
-}
-
-void ARailsPlayerCharacter::Fire() {
-  // TODO: Implement weapon fire logic here
-  UE_LOG(LogEpochRails, Log,
-         TEXT("Fire() called - weapon system not implemented yet"));
-
-  // Example placeholder:
-  // if (CurrentWeapon) {
-  //     CurrentWeapon->Fire();
-  // }
 }
