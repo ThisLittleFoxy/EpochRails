@@ -20,9 +20,22 @@ void UTrainPhysicsComponent::TickComponent(
     FActorComponentTickFunction *ThisTickFunction) {
   Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-  if (DeltaTime > 0.0f) {
-    // Update physics simulation
-    UpdatePhysics(DeltaTime);
+if (DeltaTime <= 0.0f) {
+    return;
+  }
+
+  // Accumulate frame time
+  PhysicsAccumulator += DeltaTime;
+
+  // Safety: don’t simulate too much in one frame
+  const float MaxAccumulated = FixedStepSeconds * MaxSubstepsPerTick;
+  PhysicsAccumulator = FMath::Min(PhysicsAccumulator, MaxAccumulated);
+
+  int32 Steps = 0;
+  while (PhysicsAccumulator >= FixedStepSeconds && Steps < MaxSubstepsPerTick) {
+    UpdatePhysics(FixedStepSeconds);
+    PhysicsAccumulator -= FixedStepSeconds;
+    ++Steps;
   }
 }
 

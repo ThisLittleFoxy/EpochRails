@@ -281,6 +281,16 @@ public:
     UFUNCTION(BlueprintPure, Category = "Train Physics")
     float GetDirection() const { return PhysicsParameters.DirectionMultiplier; }
 
+	// Fixed-step simulation
+    float PhysicsAccumulator = 0.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Train Physics|Substepping",
+              meta = (ClampMin = "0.001", ClampMax = "0.05"))
+    float FixedStepSeconds = 1.0f / 60.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Train Physics|Substepping",
+              meta = (ClampMin = "1", ClampMax = "32"))
+    int32 MaxSubstepsPerTick = 8;
   protected:
 	virtual void BeginPlay() override;
 

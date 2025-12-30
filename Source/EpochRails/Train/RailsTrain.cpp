@@ -1,13 +1,13 @@
 // RailsTrain.cpp
 
 #include "RailsTrain.h"
+
 #include "Character/RailsPlayerCharacter.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/LocalPlayer.h"
-#include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "EpochRails.h"
 #include "GameFramework/Character.h"
@@ -17,9 +17,11 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "RailsSplinePath.h"
 #include "TrainSpeedometerWidget.h"
+#include "Wagon.h"
 
 ARailsTrain::ARailsTrain() {
   PrimaryActorTick.bCanEverTick = true;
+  PrimaryActorTick.TickGroup = TG_PrePhysics;
 
   // Create root component
   TrainRoot = CreateDefaultSubobject<USceneComponent>(TEXT("TrainRoot"));
@@ -90,6 +92,12 @@ ARailsTrain::ARailsTrain() {
   ControlPanelWidgetComponent->SetWidgetSpace(EWidgetSpace::World);
   ControlPanelWidgetComponent->SetCollisionEnabled(
       ECollisionEnabled::QueryOnly);
+
+  // Rear attachment point for the first wagon
+  RearAttachmentPoint =
+      CreateDefaultSubobject<USceneComponent>(TEXT("RearAttachmentPoint"));
+  RearAttachmentPoint->SetupAttachment(TrainRoot);
+  RearAttachmentPoint->SetRelativeLocation(FVector(-600.0f, 0.0f, 0.0f));
 }
 
 void ARailsTrain::BeginPlay() {
@@ -111,10 +119,14 @@ void ARailsTrain::BeginPlay() {
         this, &ARailsTrain::OnTrainInteriorBeginOverlap);
     TrainInteriorTrigger->OnComponentEndOverlap.AddDynamic(
         this, &ARailsTrain::OnTrainInteriorEndOverlap);
+
     UE_LOG(LogEpochRails, Log,
            TEXT("Train interior trigger configured for train: %s"), *GetName());
   }
 
+  if (PhysicsComponent) {
+    AddTickPrerequisiteComponent(PhysicsComponent);
+  }
   // Initialize UI widgets
   InitializeSpeedometer();
   InitializeControlPanel();
@@ -131,30 +143,29 @@ void ARailsTrain::Tick(float DeltaTime) {
     CurrentThrottle = FMath::Max(0.0f, CurrentThrottle - (0.5f * DeltaTime));
     CurrentBrake = 1.0f;
   }
+
   // Update movement
   UpdateTrainMovement(DeltaTime);
 
   // Draw debug info if enabled
-  if (bShowPhysicsDebug && bUsePhysicsSimulation) {
+  if (bShowPhysicsDebug) {
     DrawPhysicsDebug();
   }
+
+  // Update wagons: only update first wagon, chain propagates automatically
+  if (AttachedWagons.Num() > 0 && CachedSplineComponent) {
+    AttachedWagons[0]->SetTargetDistance(CurrentDistance);
+  }
+
+  const float SafeDeltaTime = FMath::Min(DeltaTime, 0.05f);
+  UpdateTrainMovement(SafeDeltaTime);
 
   // Update speedometer display
   UpdateSpeedometerDisplay();
 }
 
-// ========== Movement Functions ==========
-
 void ARailsTrain::UpdateTrainMovement(float DeltaTime) {
-  if (!CachedSplineComponent) {
-    return;
-  }
-
-  if (bUsePhysicsSimulation) {
-    UpdatePhysicsMovement(DeltaTime);
-  } else {
-    UpdateLegacyMovement(DeltaTime);
-  }
+  UpdatePhysicsMovement(DeltaTime);
 }
 
 void ARailsTrain::UpdatePhysicsMovement(float DeltaTime) {
@@ -174,40 +185,20 @@ void ARailsTrain::UpdatePhysicsMovement(float DeltaTime) {
   PhysicsComponent->SetThrottle(CurrentThrottle);
   PhysicsComponent->SetBrake(CurrentBrake);
 
-  // Get velocity from physics (in m/s, with direction sign)
-  float VelocityMs = PhysicsComponent->PhysicsState.Velocity; // Signed velocity
-
-  // LOG THIS:
-  if (bShowPhysicsDebug) {
-    UE_LOG(LogTemp, Warning, TEXT("=== RAILS TRAIN UPDATE ==="));
-    UE_LOG(LogTemp, Warning, TEXT("  VelocityMs from Physics: %.2f m/s"),
-           VelocityMs);
-    UE_LOG(LogTemp, Warning, TEXT("  CurrentDistance BEFORE: %.1f cm"),
-           CurrentDistance);
-  }
+  // Get velocity from physics (in m/s, signed)
+  float VelocityMs = PhysicsComponent->PhysicsState.Velocity;
 
   // Convert to cm/s for Unreal units (absolute for display)
   CurrentSpeed = FMath::Abs(VelocityMs) * 100.0f;
 
   // Update distance along spline (velocity already includes direction)
-  float DistanceDelta = VelocityMs * 100.0f * DeltaTime;
+  const float DistanceDelta = VelocityMs * 100.0f * DeltaTime;
   CurrentDistance += DistanceDelta;
 
-  // LOG THIS:
-  if (bShowPhysicsDebug) {
-    UE_LOG(LogTemp, Warning,
-           TEXT("  DistanceDelta: %.2f cm (VelocityMs=%.2f * 100 * "
-                "DeltaTime=%.4f)"),
-           DistanceDelta, VelocityMs, DeltaTime);
-    UE_LOG(LogTemp, Warning, TEXT("  CurrentDistance AFTER: %.1f cm"),
-           CurrentDistance);
-  }
-
   // Handle looping and bounds
-  float SplineLength = CachedSplineComponent->GetSplineLength();
+  const float SplineLength = CachedSplineComponent->GetSplineLength();
 
   if (bLoopPath) {
-    // Wrap around for looping paths
     while (CurrentDistance >= SplineLength) {
       CurrentDistance -= SplineLength;
     }
@@ -215,8 +206,7 @@ void ARailsTrain::UpdatePhysicsMovement(float DeltaTime) {
       CurrentDistance += SplineLength;
     }
   } else {
-    // Clamp for non-looping paths
-    float OldDistance = CurrentDistance;
+    const float OldDistance = CurrentDistance;
     CurrentDistance = FMath::Clamp(CurrentDistance, 0.0f, SplineLength);
 
     // Stop if reached the end
@@ -230,7 +220,8 @@ void ARailsTrain::UpdatePhysicsMovement(float DeltaTime) {
   MoveToDistance(CurrentDistance);
 
   // Update state based on acceleration
-  float Acceleration = PhysicsComponent->PhysicsState.Acceleration;
+  const float Acceleration = PhysicsComponent->PhysicsState.Acceleration;
+
   if (FMath::Abs(Acceleration) < 0.01f) {
     TrainState =
         (CurrentSpeed > 1.0f) ? ETrainState::Moving : ETrainState::Stopped;
@@ -241,88 +232,33 @@ void ARailsTrain::UpdatePhysicsMovement(float DeltaTime) {
   }
 }
 
-void ARailsTrain::UpdateLegacyMovement(float DeltaTime) {
-  if (!CachedSplineComponent) {
-    return;
-  }
-
-  // Calculate target speed
-  float TargetSpeed = GetTargetSpeed();
-
-  // Interpolate current speed towards target
-  if (CurrentSpeed < TargetSpeed) {
-    CurrentSpeed = FMath::FInterpConstantTo(CurrentSpeed, TargetSpeed,
-                                            DeltaTime, AccelerationRate);
-    TrainState = ETrainState::Accelerating;
-  } else if (CurrentSpeed > TargetSpeed) {
-    CurrentSpeed = FMath::FInterpConstantTo(CurrentSpeed, TargetSpeed,
-                                            DeltaTime, DecelerationRate);
-    TrainState = ETrainState::Decelerating;
-  } else {
-    TrainState =
-        (CurrentSpeed > 1.0f) ? ETrainState::Moving : ETrainState::Stopped;
-  }
-
-  // Update distance along spline
-  CurrentDistance += CurrentSpeed * DeltaTime;
-
-  // Handle looping
-  float SplineLength = CachedSplineComponent->GetSplineLength();
-  if (bLoopPath) {
-    if (CurrentDistance >= SplineLength) {
-      CurrentDistance = FMath::Fmod(CurrentDistance, SplineLength);
-    }
-  } else {
-    CurrentDistance = FMath::Clamp(CurrentDistance, 0.0f, SplineLength);
-    if (CurrentDistance >= SplineLength && TrainState == ETrainState::Moving) {
-      StopTrain();
-    }
-  }
-
-  // Move to new position
-  MoveToDistance(CurrentDistance);
-}
-
 void ARailsTrain::MoveToDistance(float Distance) {
   if (!CachedSplineComponent) {
     return;
   }
 
-  // Get location and rotation at distance
   FVector NewLocation = CachedSplineComponent->GetLocationAtDistanceAlongSpline(
       Distance, ESplineCoordinateSpace::World);
   FRotator NewRotation =
       CachedSplineComponent->GetRotationAtDistanceAlongSpline(
           Distance, ESplineCoordinateSpace::World);
 
-  // Use sweep to prevent characters from being ejected
-  SetActorLocationAndRotation(NewLocation, NewRotation, true);
+  SetActorLocationAndRotation(NewLocation, NewRotation, false, nullptr,
+                              ETeleportType::None);
 }
-
-float ARailsTrain::GetTargetSpeed() const {
-  if (TrainState == ETrainState::Stopped) {
-    return 0.0f;
-  }
-
-  // Apply throttle as percentage of max speed
-  return MaxSpeed * FMath::Abs(CurrentThrottle);
-}
-
-// ========== Physics Helper Functions ==========
 
 float ARailsTrain::CalculateTrackGrade() {
   if (!CachedSplineComponent) {
     return 0.0f;
   }
 
-  // Get tangent at current position
   FVector CurrentTangent =
       CachedSplineComponent->GetTangentAtDistanceAlongSpline(
           CurrentDistance, ESplineCoordinateSpace::World);
 
-  // Get tangent ahead
   float AheadDistance = CurrentDistance + PhysicsSampleDistance;
-  float SplineLength = CachedSplineComponent->GetSplineLength();
+  const float SplineLength = CachedSplineComponent->GetSplineLength();
+
   if (AheadDistance > SplineLength && bLoopPath) {
     AheadDistance = FMath::Fmod(AheadDistance, SplineLength);
   }
@@ -330,15 +266,13 @@ float ARailsTrain::CalculateTrackGrade() {
   FVector AheadTangent = CachedSplineComponent->GetTangentAtDistanceAlongSpline(
       AheadDistance, ESplineCoordinateSpace::World);
 
-  // Calculate average grade
   CurrentTangent.Normalize();
   AheadTangent.Normalize();
+
   FVector AverageTangent = (CurrentTangent + AheadTangent) * 0.5f;
   AverageTangent.Normalize();
 
-  // Calculate grade angle in degrees
-  float GradeDegrees = FMath::RadiansToDegrees(FMath::Asin(AverageTangent.Z));
-  return GradeDegrees;
+  return FMath::RadiansToDegrees(FMath::Asin(AverageTangent.Z));
 }
 
 float ARailsTrain::CalculateTrackCurvature() {
@@ -346,13 +280,12 @@ float ARailsTrain::CalculateTrackCurvature() {
     return 0.0f;
   }
 
-  // Get direction at current position
   FVector CurrentDir = CachedSplineComponent->GetDirectionAtDistanceAlongSpline(
       CurrentDistance, ESplineCoordinateSpace::World);
 
-  // Get direction ahead
   float AheadDistance = CurrentDistance + PhysicsSampleDistance;
-  float SplineLength = CachedSplineComponent->GetSplineLength();
+  const float SplineLength = CachedSplineComponent->GetSplineLength();
+
   if (AheadDistance > SplineLength && bLoopPath) {
     AheadDistance = FMath::Fmod(AheadDistance, SplineLength);
   }
@@ -360,14 +293,13 @@ float ARailsTrain::CalculateTrackCurvature() {
   FVector AheadDir = CachedSplineComponent->GetDirectionAtDistanceAlongSpline(
       AheadDistance, ESplineCoordinateSpace::World);
 
-  // Calculate angle between directions
   float DotProduct = FVector::DotProduct(CurrentDir, AheadDir);
   DotProduct = FMath::Clamp(DotProduct, -1.0f, 1.0f);
+
   float AngleDegrees = FMath::RadiansToDegrees(FMath::Acos(DotProduct));
 
   // Normalize to 0-1 range (0 = straight, 1 = very tight curve)
-  float Curvature = FMath::Clamp(AngleDegrees / 90.0f, 0.0f, 1.0f);
-  return Curvature;
+  return FMath::Clamp(AngleDegrees / 90.0f, 0.0f, 1.0f);
 }
 
 void ARailsTrain::UpdatePhysicsParameters(float DeltaTime) {
@@ -375,17 +307,14 @@ void ARailsTrain::UpdatePhysicsParameters(float DeltaTime) {
     return;
   }
 
-  // Calculate current track parameters
-  float TargetGrade = CalculateTrackGrade();
-  float TargetCurvature = CalculateTrackCurvature();
+  const float TargetGrade = CalculateTrackGrade();
+  const float TargetCurvature = CalculateTrackCurvature();
 
-  // Smooth the transitions
   SmoothedGrade = FMath::FInterpTo(SmoothedGrade, TargetGrade, DeltaTime,
                                    GradeSmoothingSpeed);
   SmoothedCurvature = FMath::FInterpTo(SmoothedCurvature, TargetCurvature,
                                        DeltaTime, GradeSmoothingSpeed);
 
-  // Update physics component
   PhysicsComponent->SetTrackGrade(SmoothedGrade);
   PhysicsComponent->SetTrackCurvature(SmoothedCurvature);
 }
@@ -395,21 +324,21 @@ void ARailsTrain::DrawPhysicsDebug() {
     return;
   }
 
-  // Build debug string
   FString DebugText = FString::Printf(
       TEXT("=== TRAIN PHYSICS DEBUG ===\n") TEXT(
-          "Speed: %.1f km/h (%.1f m/s)\n") TEXT("Acceleration: %.2f m/s²\n")
+          "Speed: %.1f km/h (%.1f m/s)\n") TEXT("Acceleration: %.2f m/s^2\n")
           TEXT("Mass: %.0f kg\n") TEXT("\n") TEXT("Forces:\n") TEXT(
               " Tractive: %.0f N\n") TEXT(" Braking: %.0f N\n")
               TEXT(" Total Resistance: %.0f N\n") TEXT("\n") TEXT(
                   "Resistance Breakdown:\n") TEXT(" Rolling: %.0f N\n")
-                  TEXT(" Air Drag: %.0f N\n") TEXT(" Grade: %.0f N (%.1f°)\n")
-                      TEXT(" Curve: %.0f N (%.2f)\n") TEXT("\n")
-                          TEXT("Track:\n") TEXT(" Grade: %.2f°\n") TEXT(
-                              " Curvature: %.2f\n") TEXT("\n") TEXT("Status:\n")
-                              TEXT(" Engine: %s\n") TEXT(" Direction: %s\n")
-                                  TEXT(" Wheel Slip: %s\n")
-                                      TEXT(" Stopping Distance: %.0f m\n")
+                  TEXT(" Air Drag: %.0f N\n")
+                      TEXT(" Grade: %.0f N (%.1f deg)\n") TEXT(
+                          " Curve: %.0f N (%.2f)\n") TEXT("\n") TEXT("Track:\n")
+                          TEXT(" Grade: %.2f deg\n") TEXT(" Curvature: %.2f\n")
+                              TEXT("\n") TEXT("Status:\n") TEXT(" Engine: %s\n")
+                                  TEXT(" Direction: %s\n")
+                                      TEXT(" Wheel Slip: %s\n") TEXT(
+                                          " Stopping Distance: %.0f m\n")
                                           TEXT(" Distance Traveled: %.0f m\n")
                                               TEXT(" Passengers: %d"),
       PhysicsComponent->GetVelocityKmh(), PhysicsComponent->GetVelocityMs(),
@@ -430,7 +359,6 @@ void ARailsTrain::DrawPhysicsDebug() {
       PhysicsComponent->CalculateStoppingDistance(),
       PhysicsComponent->PhysicsState.DistanceTraveled, PassengersInside.Num());
 
-  // Display on screen
   GEngine->AddOnScreenDebugMessage(
       -1, 0.0f,
       PhysicsComponent->PhysicsState.bIsWheelSlipping ? FColor::Red
@@ -438,64 +366,46 @@ void ARailsTrain::DrawPhysicsDebug() {
       DebugText);
 
   // Draw grade visualization
-  FVector TrainLocation = GetActorLocation();
-  FVector UpVector = GetActorUpVector();
-  FVector ForwardVector = GetActorForwardVector();
+  const FVector TrainLocation = GetActorLocation();
+  const FVector UpVector = GetActorUpVector();
+  const FVector ForwardVector = GetActorForwardVector();
 
-  // Draw grade line
-  float GradeVisualizationLength = 500.0f;
-  FVector GradeEndPoint =
+  const float GradeVisualizationLength = 500.0f;
+
+  const FVector GradeEndPoint =
       TrainLocation +
       ForwardVector * GradeVisualizationLength *
           FMath::Cos(FMath::DegreesToRadians(SmoothedGrade)) +
       UpVector * GradeVisualizationLength *
           FMath::Sin(FMath::DegreesToRadians(SmoothedGrade));
-  FColor GradeColor =
+
+  const FColor GradeColor =
       SmoothedGrade > 0.0f
           ? FColor::Red
           : (SmoothedGrade < 0.0f ? FColor::Green : FColor::White);
+
   DrawDebugLine(GetWorld(), TrainLocation, GradeEndPoint, GradeColor, false,
                 -1.0f, 0, 5.0f);
 }
 
-// ========== Public API ==========
-
 void ARailsTrain::StartTrain() {
-  if (bUsePhysicsSimulation && PhysicsComponent) {
-    CurrentThrottle = 0.5f; // Start with 50% throttle
+  if (PhysicsComponent) {
+    CurrentThrottle = 0.5f;
     CurrentBrake = 0.0f;
-  } else {
-    CurrentThrottle = 1.0f;
   }
-
   TrainState = ETrainState::Accelerating;
 }
 
 void ARailsTrain::StopTrain() {
-  if (bUsePhysicsSimulation && PhysicsComponent) {
+  if (PhysicsComponent) {
     CurrentThrottle = 0.0f;
-    CurrentBrake = 1.0f; // Apply full brake
-  } else {
-    CurrentThrottle = 0.0f;
-    CurrentSpeed = 0.0f;
+    CurrentBrake = 1.0f;
   }
-
   TrainState = ETrainState::Stopped;
 }
 
-void ARailsTrain::SetSpeed(float NewSpeed) {
-  if (!bUsePhysicsSimulation) {
-    CurrentSpeed = FMath::Clamp(NewSpeed, 0.0f, MaxSpeed);
-  }
-}
-
 float ARailsTrain::GetCurrentSpeedKmh() const {
-  if (bUsePhysicsSimulation && PhysicsComponent) {
-    return PhysicsComponent->GetVelocityKmh();
-  }
-
-  // Convert cm/s to km/h
-  return (CurrentSpeed / 100.0f) * 3.6f;
+  return PhysicsComponent ? PhysicsComponent->GetVelocityKmh() : 0.0f;
 }
 
 bool ARailsTrain::IsCharacterOnTrain(ACharacter *Character) const {
@@ -505,14 +415,16 @@ bool ARailsTrain::IsCharacterOnTrain(ACharacter *Character) const {
 
 void ARailsTrain::ApplyThrottle(float ThrottleValue) {
   CurrentThrottle = FMath::Clamp(ThrottleValue, -1.0f, 1.0f);
-  if (bUsePhysicsSimulation && PhysicsComponent) {
+
+  if (PhysicsComponent) {
     PhysicsComponent->SetThrottle(FMath::Max(0.0f, CurrentThrottle));
   }
 }
 
 void ARailsTrain::ApplyBrake(float BrakeValue) {
   CurrentBrake = FMath::Clamp(BrakeValue, 0.0f, 1.0f);
-  if (bUsePhysicsSimulation && PhysicsComponent) {
+
+  if (PhysicsComponent) {
     PhysicsComponent->SetBrake(CurrentBrake);
   }
 }
@@ -520,7 +432,8 @@ void ARailsTrain::ApplyBrake(float BrakeValue) {
 void ARailsTrain::EmergencyBrake() {
   CurrentThrottle = 0.0f;
   CurrentBrake = 1.0f;
-  if (bUsePhysicsSimulation && PhysicsComponent) {
+
+  if (PhysicsComponent) {
     PhysicsComponent->EmergencyBrake();
   }
 
@@ -528,37 +441,94 @@ void ARailsTrain::EmergencyBrake() {
 }
 
 float ARailsTrain::GetStoppingDistance() const {
-  if (bUsePhysicsSimulation && PhysicsComponent) {
-    return PhysicsComponent->CalculateStoppingDistance();
-  }
-
-  // Simple kinematic calculation for legacy mode
-  if (CurrentSpeed > 0.0f && DecelerationRate > 0.0f) {
-    return (CurrentSpeed * CurrentSpeed) / (2.0f * DecelerationRate);
-  }
-
-  return 0.0f;
+  return PhysicsComponent ? PhysicsComponent->CalculateStoppingDistance()
+                          : 0.0f;
 }
 
 void ARailsTrain::AddWagons(int32 Count) {
-  if (PhysicsComponent) {
-    PhysicsComponent->AddWagons(Count);
+  if (!WagonClass) {
+    UE_LOG(LogTemp, Error, TEXT("RailsTrain: WagonClass not set!"));
+    return;
   }
+
+  if (!CachedSplineComponent) {
+    UE_LOG(LogTemp, Error, TEXT("RailsTrain: No spline component available!"));
+    return;
+  }
+
+  for (int32 i = 0; i < Count; i++) {
+    AActor *LastVehicle = this;
+    if (AttachedWagons.Num() > 0) {
+      LastVehicle = AttachedWagons.Last();
+    }
+
+    FVector SpawnLocation = FVector::ZeroVector;
+    FRotator SpawnRotation = FRotator::ZeroRotator;
+
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.Owner = this;
+    SpawnParams.SpawnCollisionHandlingOverride =
+        ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+    AWagon *NewWagon = GetWorld()->SpawnActor<AWagon>(
+        WagonClass, SpawnLocation, SpawnRotation, SpawnParams);
+    if (!NewWagon) {
+      UE_LOG(LogTemp, Error, TEXT("Failed to spawn wagon!"));
+      continue;
+    }
+
+    NewWagon->Initialize(CachedSplineComponent, LastVehicle);
+
+    if (AWagon *LastWagon = Cast<AWagon>(LastVehicle)) {
+      LastWagon->SetNextWagon(NewWagon);
+    }
+
+    AttachedWagons.Add(NewWagon);
+
+    if (PhysicsComponent) {
+      PhysicsComponent->AddWagons(1);
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("Spawned wagon %d following spline"), i + 1);
+  }
+
+  UE_LOG(LogTemp, Log, TEXT("Added %d wagon(s). Total: %d"), Count,
+         AttachedWagons.Num());
 }
 
 void ARailsTrain::RemoveWagons(int32 Count) {
-  if (PhysicsComponent) {
-    PhysicsComponent->RemoveWagons(Count);
+  if (AttachedWagons.Num() == 0) {
+    UE_LOG(LogTemp, Warning, TEXT("No wagons to remove!"));
+    return;
   }
+
+  const int32 RemoveCount = FMath::Min(Count, AttachedWagons.Num());
+  for (int32 i = 0; i < RemoveCount; i++) {
+    AWagon *LastWagon = AttachedWagons.Last();
+    if (!LastWagon) {
+      continue;
+    }
+
+    if (PhysicsComponent) {
+      PhysicsComponent->RemoveWagons(1);
+    }
+
+    LastWagon->DetachFromChain();
+    LastWagon->Destroy();
+
+    AttachedWagons.RemoveAt(AttachedWagons.Num() - 1);
+  }
+
+  UE_LOG(LogTemp, Log, TEXT("Removed %d wagon(s). Remaining: %d"), RemoveCount,
+         AttachedWagons.Num());
 }
 
-// ========== NEW: Control Panel Functions ==========
+// ===== Control Panel / engine / direction =====
 
 void ARailsTrain::ToggleEngine() {
   bEngineRunning = !bEngineRunning;
 
   if (!bEngineRunning) {
-    // Stop train when engine is turned off
     CurrentThrottle = 0.0f;
     TrainState = ETrainState::Stopped;
   }
@@ -568,27 +538,20 @@ void ARailsTrain::ToggleEngine() {
 }
 
 void ARailsTrain::ToggleReverse() {
-  float CurrentSpeedKmh = GetCurrentSpeedKmh();
+  const float CurrentSpeedKmh = GetCurrentSpeedKmh();
 
-  // Check if train is moving
-  if (CurrentSpeedKmh > 5.0f) // 5 km/h threshold
-  {
+  if (CurrentSpeedKmh > 5.0f) {
     UE_LOG(
         LogTemp, Warning,
         TEXT("Cannot reverse while moving (%.1f km/h) - Stop the train first!"),
         CurrentSpeedKmh);
-
-    // Auto-brake
     CurrentBrake = 1.0f;
     CurrentThrottle = 0.0f;
-
     return;
   }
 
-  // Train is stopped - toggle direction
   ReverseMultiplier *= -1.0f;
 
-  // Update physics component direction
   if (PhysicsComponent) {
     PhysicsComponent->SetDirection(ReverseMultiplier);
   }
@@ -596,8 +559,6 @@ void ARailsTrain::ToggleReverse() {
   UE_LOG(LogTemp, Log, TEXT("Direction: %s"),
          ReverseMultiplier > 0 ? TEXT("Forward") : TEXT("Reverse"));
 }
-
-
 
 void ARailsTrain::IncreaseThrottle(float Amount) {
   if (!bEngineRunning) {
@@ -610,39 +571,31 @@ void ARailsTrain::IncreaseThrottle(float Amount) {
     return;
   }
 
-  // Use gear-specific acceleration rate
-  float AccelRate = GetCurrentGearAccelerationRate();
+  const float AccelRate = GetCurrentGearAccelerationRate();
   CurrentThrottle =
       FMath::Clamp(CurrentThrottle + (Amount * AccelRate), 0.0f, 1.0f);
-
   TrainState = ETrainState::Accelerating;
 
   UE_LOG(LogTemp, Log, TEXT("Throttle: %.2f (Gear: %d, Accel Rate: %.2f)"),
          CurrentThrottle, CurrentGear, AccelRate);
 }
 
-
 void ARailsTrain::StartBraking() {
   bBrakeButtonHeld = true;
   CurrentBrake = 1.0f;
-
-  // Reduce throttle gradually while braking
   CurrentThrottle = FMath::Max(0.0f, CurrentThrottle - 0.1f);
-
   TrainState = ETrainState::Decelerating;
+
   UE_LOG(LogTemp, Log, TEXT("Braking started"));
 }
 
 void ARailsTrain::StopBraking() {
   bBrakeButtonHeld = false;
   CurrentBrake = 0.0f;
-
   UE_LOG(LogTemp, Log, TEXT("Braking stopped"));
 }
 
-
-
-// ===== Passenger Management Implementation =====
+// ===== Passenger management =====
 
 bool ARailsTrain::IsPassengerInside(ARailsPlayerCharacter *Character) const {
   return PassengersInside.Contains(Character);
@@ -660,10 +613,7 @@ void ARailsTrain::OnPlayerEnterTrain(ARailsPlayerCharacter *Character) {
     return;
   }
 
-  // Add to passengers list
   PassengersInside.Add(Character);
-
-  // Switch to passenger IMC (no jump)
   SwitchInputMappingContext(Character, true);
 
   UE_LOG(LogEpochRails, Log, TEXT("Player %s entered train %s - Jump disabled"),
@@ -682,10 +632,7 @@ void ARailsTrain::OnPlayerExitTrain(ARailsPlayerCharacter *Character) {
     return;
   }
 
-  // Remove from passengers list
   PassengersInside.Remove(Character);
-
-  // Restore default IMC (with jump)
   SwitchInputMappingContext(Character, false);
 
   UE_LOG(LogEpochRails, Log, TEXT("Player %s exited train %s - Jump enabled"),
@@ -707,14 +654,12 @@ void ARailsTrain::SwitchInputMappingContext(ARailsPlayerCharacter *Character,
   }
 
   if (bInsideTrain) {
-    // Remove default IMC
     if (DefaultInputMappingContext) {
       Subsystem->RemoveMappingContext(DefaultInputMappingContext);
       UE_LOG(LogEpochRails, Log, TEXT("Removed default IMC: %s"),
              *DefaultInputMappingContext->GetFName().ToString());
     }
 
-    // Add passenger IMC (without jump)
     if (TrainPassengerInputMappingContext) {
       Subsystem->AddMappingContext(TrainPassengerInputMappingContext,
                                    IMCPriority);
@@ -726,14 +671,12 @@ void ARailsTrain::SwitchInputMappingContext(ARailsPlayerCharacter *Character,
                   "be disabled."));
     }
   } else {
-    // Remove passenger IMC
     if (TrainPassengerInputMappingContext) {
       Subsystem->RemoveMappingContext(TrainPassengerInputMappingContext);
       UE_LOG(LogEpochRails, Log, TEXT("Removed passenger IMC: %s"),
              *TrainPassengerInputMappingContext->GetFName().ToString());
     }
 
-    // Restore default IMC (with jump)
     if (DefaultInputMappingContext) {
       Subsystem->AddMappingContext(DefaultInputMappingContext, IMCPriority);
       UE_LOG(LogEpochRails, Log, TEXT("Restored default IMC (with jump): %s"),
@@ -784,7 +727,7 @@ void ARailsTrain::OnTrainInteriorEndOverlap(
   }
 }
 
-// ========== UI Functions ==========
+// ===== UI =====
 
 void ARailsTrain::InitializeSpeedometer() {
   if (!SpeedometerWidgetComponent) {
@@ -794,7 +737,6 @@ void ARailsTrain::InitializeSpeedometer() {
     return;
   }
 
-  // Set widget class if provided
   if (SpeedometerWidgetClass) {
     SpeedometerWidgetComponent->SetWidgetClass(SpeedometerWidgetClass);
   } else {
@@ -804,12 +746,10 @@ void ARailsTrain::InitializeSpeedometer() {
     return;
   }
 
-  // Get widget instance
   if (UUserWidget *UserWidget =
           SpeedometerWidgetComponent->GetUserWidgetObject()) {
     CachedSpeedometerWidget = Cast<UTrainSpeedometerWidget>(UserWidget);
     if (CachedSpeedometerWidget) {
-      // Initialize with max speed
       CachedSpeedometerWidget->SetMaxSpeed(SpeedometerMaxSpeed);
       CachedSpeedometerWidget->SetSpeedImmediate(0.0f);
       UE_LOG(LogTemp, Log,
@@ -830,29 +770,20 @@ void ARailsTrain::InitializeControlPanel() {
     return;
   }
 
-  // Create widget instance
   ControlPanelWidgetComponent->SetWidgetClass(ControlPanelWidgetClass);
 
-  // Configure for interaction
   ControlPanelWidgetComponent->SetCollisionEnabled(
       ECollisionEnabled::QueryOnly);
   ControlPanelWidgetComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
   ControlPanelWidgetComponent->SetCollisionResponseToChannel(ECC_Visibility,
                                                              ECR_Block);
 
-  // REMOVED: SetReceiveHardwareInput - not available in UE 5.7
-  // Widget interaction is handled automatically by PlayerController settings
-
   UE_LOG(LogTemp, Log, TEXT("Control panel initialized successfully"));
 }
 
-
 void ARailsTrain::UpdateSpeedometerDisplay() {
   if (CachedSpeedometerWidget) {
-    // Get current speed in km/h
-    float SpeedKmh = GetCurrentSpeedKmh();
-
-    // Update speedometer
+    const float SpeedKmh = GetCurrentSpeedKmh();
     CachedSpeedometerWidget->UpdateSpeed(SpeedKmh, SpeedometerMaxSpeed);
   }
 }
@@ -871,7 +802,7 @@ void ARailsTrain::SetSpeedometerMaxSpeed(float NewMaxSpeed) {
   }
 }
 
-// ========== Gear System Implementation ==========
+// ===== Gear system =====
 
 bool ARailsTrain::CanShiftGear() const {
   return TimeSinceLastGearShift >= GearShiftDelay;
@@ -893,7 +824,6 @@ void ARailsTrain::ShiftGearUp() {
     CurrentGear++;
     TimeSinceLastGearShift = 0.0f;
 
-    // Update physics component gear
     if (PhysicsComponent) {
       PhysicsComponent->SetGear(CurrentGear);
     }
@@ -915,13 +845,11 @@ void ARailsTrain::ShiftGearDown() {
     CurrentGear--;
     TimeSinceLastGearShift = 0.0f;
 
-    // Update physics component gear
     if (PhysicsComponent) {
       PhysicsComponent->SetGear(CurrentGear);
     }
 
     if (CurrentGear == 0) {
-      // Neutral gear - reset throttle
       CurrentThrottle = 0.0f;
       UE_LOG(LogTemp, Log, TEXT("Gear shifted to NEUTRAL"));
     } else {
@@ -932,7 +860,6 @@ void ARailsTrain::ShiftGearDown() {
   }
 }
 
-
 float ARailsTrain::GetCurrentGearSpeedMultiplier() const {
   if (CurrentGear == 0 || CurrentGear > GearSpeedMultipliers.Num()) {
     return 0.0f;
@@ -942,7 +869,7 @@ float ARailsTrain::GetCurrentGearSpeedMultiplier() const {
 
 float ARailsTrain::GetCurrentGearAccelerationRate() const {
   if (CurrentGear == 0 || CurrentGear > GearAccelerationRates.Num()) {
-    return 0.1f; // Default
+    return 0.1f;
   }
   return GearAccelerationRates[CurrentGear - 1];
 }
