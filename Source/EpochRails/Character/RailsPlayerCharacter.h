@@ -11,8 +11,7 @@ class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
 class UInteractionComponent;
-class ARailsTrain;     // уже есть
-class ARailsTrainSeat; // добавьте эту строку если её нет
+class ARailsTrain;     // пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -127,10 +126,6 @@ protected:
   UPROPERTY(BlueprintReadOnly, Category = "Train")
   ARailsTrain *ControlledTrain;
 
-      /** Seat player is currently sitting in */
-  UPROPERTY(BlueprintReadOnly, Category = "Train")
-  ARailsTrainSeat *CurrentSeat;
-
   /** Handle fire button press (weapon or UI) */
   void OnFirePressed(const FInputActionValue &Value);
 
@@ -162,9 +157,6 @@ public:
   UFUNCTION(BlueprintPure, Category = "Train")
   ARailsTrain *GetControlledTrain() const { return ControlledTrain; }
 
-  UFUNCTION(BlueprintCallable, Category = "Train")
-  void SetCurrentSeat(ARailsTrainSeat *Seat) { CurrentSeat = Seat; }
-  
   UFUNCTION(BlueprintCallable, Category = "Weapon")
   void Fire();
 
