@@ -373,7 +373,7 @@ private:
   UPROPERTY()
   UTrainSpeedometerWidget *CachedSpeedometerWidget = nullptr;
 
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Train|Passengers",
-            meta = (AllowPrivateAccess = "true"))
+  // Internal passenger tracking using weak pointers for safety
+  // Not exposed to Blueprint - use GetPassengers() instead
   TArray<TWeakObjectPtr<ARailsPlayerCharacter>> PassengersInside;
 };
