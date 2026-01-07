@@ -331,10 +331,15 @@ void ARailsPlayerCharacter::DoStopSprint() {
 
 void ARailsPlayerCharacter::DoInteract() {
   // Priority 1: If sitting in a seat, exit it
-  if (CurrentSeat) {
+  if (CurrentSeat && IsValid(CurrentSeat)) {
     // Use Execute_ prefix for interface functions
     IInteractableInterface::Execute_OnInteract(CurrentSeat, this);
     return;
+  } else if (CurrentSeat) {
+    // Seat reference is invalid, clear it
+    UE_LOG(LogEpochRails, Warning,
+           TEXT("CurrentSeat was invalid, clearing reference"));
+    CurrentSeat = nullptr;
   }
 
   // Priority 2: Normal interaction with world objects

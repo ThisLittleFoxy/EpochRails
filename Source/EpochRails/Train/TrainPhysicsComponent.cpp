@@ -272,9 +272,18 @@ void UTrainPhysicsComponent::UpdatePhysics(float DeltaTime) {
   if (CurrentThrottle > 0.0f && MaxSpeedMs > 0.0f) {
     // Calculate acceleration from engine power
     float PowerWatts = PhysicsParameters.EnginePowerKW * 1000.0f;
-    float CurrentVelocity = FMath::Max(1.0f, AbsoluteVelocity);
 
-    float TractiveForce = (PowerWatts / CurrentVelocity) * CurrentThrottle;
+    // For realistic train physics: at low speeds, use constant max force
+    // At higher speeds, force = Power / Velocity
+    float TractiveForce;
+    if (AbsoluteVelocity < 0.1f) {
+      // At very low speeds (< 0.1 m/s), use maximum available force
+      // This represents the maximum tractive effort at standstill
+      TractiveForce = PowerWatts / 0.1f * CurrentThrottle;
+    } else {
+      // Normal operation: Power = Force * Velocity => Force = Power / Velocity
+      TractiveForce = (PowerWatts / AbsoluteVelocity) * CurrentThrottle;
+    }
 
     // Apply base acceleration multiplier
     TractiveForce *= PhysicsParameters.AccelerationMultiplier;

@@ -54,7 +54,26 @@ ARailsTrainSeat::ARailsTrainSeat() {
 }
 
 ARailsTrainSeat::~ARailsTrainSeat() {
-  // Destructor - cleanup is handled in EndPlay
+  // Safety cleanup in case EndPlay wasn't called
+  // Clear timers if they're still active
+  if (UWorld *World = GetWorld()) {
+    if (FTimerManager *TimerManager = &World->GetTimerManager()) {
+      if (SitDownAnimationTimerHandle.IsValid()) {
+        TimerManager->ClearTimer(SitDownAnimationTimerHandle);
+      }
+      if (StandUpAnimationTimerHandle.IsValid()) {
+        TimerManager->ClearTimer(StandUpAnimationTimerHandle);
+      }
+    }
+  }
+
+  // If player is still seated, clean up references (but don't animate)
+  if (bIsPlayerSeated && SeatedPlayer) {
+    if (SeatedPlayer->IsValidLowLevel() && !SeatedPlayer->IsPendingKill()) {
+      SeatedPlayer->SetControlledTrain(nullptr);
+      SeatedPlayer->SetCurrentSeat(nullptr);
+    }
+  }
 }
 
 void ARailsTrainSeat::BeginPlay() { Super::BeginPlay(); }
