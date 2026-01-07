@@ -71,9 +71,7 @@ public:
   bool IsCharacterOnTrain(ACharacter *Character) const;
 
   UFUNCTION(BlueprintPure, Category = "Train|Control")
-  TArray<ARailsPlayerCharacter *> GetPassengers() const {
-    return PassengersInside;
-  }
+  TArray<ARailsPlayerCharacter *> GetPassengers() const;
 
   UFUNCTION(BlueprintCallable, Category = "Train|Control")
   void ApplyThrottle(float ThrottleValue);
@@ -127,7 +125,7 @@ public:
   bool IsEngineRunning() const { return bEngineRunning; }
 
   UFUNCTION(BlueprintPure, Category = "Train|Control")
-  float GetReverseMultiplier() const { return ReverseMultiplier; }
+  float GetReverseMultiplier() const;
 
   UFUNCTION(BlueprintCallable, Category = "Train|Control")
   void IncreaseThrottle(float Amount = 0.1f);
@@ -243,9 +241,6 @@ protected:
 
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
   bool bEngineRunning = false;
-
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
-  float ReverseMultiplier = 1.0f;
 
   // ===== Gears =====
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
@@ -382,7 +377,7 @@ private:
   UPROPERTY()
   UTrainSpeedometerWidget *CachedSpeedometerWidget = nullptr;
 
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Train|Passengers",
-            meta = (AllowPrivateAccess = "true"))
-  TArray<ARailsPlayerCharacter *> PassengersInside;
+  // Internal passenger tracking using weak pointers for safety
+  // Not exposed to Blueprint - use GetPassengers() instead
+  TArray<TWeakObjectPtr<ARailsPlayerCharacter>> PassengersInside;
 };

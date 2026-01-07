@@ -116,6 +116,16 @@ void ARailsTrain::BeginPlay() {
   // Cache spline component
   if (SplinePathRef) {
     CachedSplineComponent = SplinePathRef->GetSpline();
+    if (!CachedSplineComponent) {
+      UE_LOG(LogEpochRails, Error,
+             TEXT("Train %s: SplinePathRef is set but GetSpline() returned "
+                  "nullptr!"),
+             *GetName());
+    }
+  } else {
+    UE_LOG(LogEpochRails, Warning,
+           TEXT("Train %s: No SplinePathRef assigned - train will not move!"),
+           *GetName());
   }
 
   // Auto-start if enabled
@@ -386,7 +396,7 @@ void ARailsTrain::DrawPhysicsDebug() {
       PhysicsComponent->PhysicsState.CurveResistance, SmoothedCurvature,
       SmoothedGrade, SmoothedCurvature,
       bEngineRunning ? TEXT("ON") : TEXT("OFF"),
-      ReverseMultiplier > 0 ? TEXT("Forward") : TEXT("Reverse"),
+      PhysicsComponent->GetDirection() > 0 ? TEXT("Forward") : TEXT("Reverse"),
       PhysicsComponent->PhysicsState.bIsWheelSlipping ? TEXT("YES")
                                                       : TEXT("NO"),
       PhysicsComponent->CalculateStoppingDistance(),
@@ -441,9 +451,34 @@ float ARailsTrain::GetCurrentSpeedKmh() const {
   return PhysicsComponent ? PhysicsComponent->GetVelocityKmh() : 0.0f;
 }
 
+float ARailsTrain::GetReverseMultiplier() const {
+  return PhysicsComponent ? PhysicsComponent->GetDirection() : 1.0f;
+}
+
 bool ARailsTrain::IsCharacterOnTrain(ACharacter *Character) const {
   ARailsPlayerCharacter *PlayerChar = Cast<ARailsPlayerCharacter>(Character);
-  return PlayerChar ? PassengersInside.Contains(PlayerChar) : false;
+  if (!PlayerChar) {
+    return false;
+  }
+
+  for (const TWeakObjectPtr<ARailsPlayerCharacter> &WeakPassenger :
+       PassengersInside) {
+    if (WeakPassenger.IsValid() && WeakPassenger.Get() == PlayerChar) {
+      return true;
+    }
+  }
+  return false;
+}
+
+TArray<ARailsPlayerCharacter *> ARailsTrain::GetPassengers() const {
+  TArray<ARailsPlayerCharacter *> ValidPassengers;
+  for (const TWeakObjectPtr<ARailsPlayerCharacter> &WeakPassenger :
+       PassengersInside) {
+    if (WeakPassenger.IsValid()) {
+      ValidPassengers.Add(WeakPassenger.Get());
+    }
+  }
+  return ValidPassengers;
 }
 
 void ARailsTrain::ApplyThrottle(float ThrottleValue) {
@@ -480,12 +515,15 @@ float ARailsTrain::GetStoppingDistance() const {
 
 void ARailsTrain::AddWagons(int32 Count) {
   if (!WagonClass) {
-    UE_LOG(LogTemp, Error, TEXT("RailsTrain: WagonClass not set!"));
+    UE_LOG(LogEpochRails, Error,
+           TEXT("Train %s: WagonClass not set!"), *GetName());
     return;
   }
 
   if (!CachedSplineComponent) {
-    UE_LOG(LogTemp, Error, TEXT("RailsTrain: No spline component available!"));
+    UE_LOG(LogEpochRails, Error,
+           TEXT("Train %s: No spline component available - cannot add wagons!"),
+           *GetName());
     return;
   }
 
@@ -583,14 +621,14 @@ void ARailsTrain::ToggleReverse() {
     return;
   }
 
-  ReverseMultiplier *= -1.0f;
-
   if (PhysicsComponent) {
-    PhysicsComponent->SetDirection(ReverseMultiplier);
-  }
+    float CurrentDirection = PhysicsComponent->GetDirection();
+    float NewDirection = CurrentDirection * -1.0f;
+    PhysicsComponent->SetDirection(NewDirection);
 
-  UE_LOG(LogTemp, Log, TEXT("Direction: %s"),
-         ReverseMultiplier > 0 ? TEXT("Forward") : TEXT("Reverse"));
+    UE_LOG(LogTemp, Log, TEXT("Direction: %s"),
+           NewDirection > 0 ? TEXT("Forward") : TEXT("Reverse"));
+  }
 }
 
 void ARailsTrain::IncreaseThrottle(float Amount) {
@@ -631,7 +669,17 @@ void ARailsTrain::StopBraking() {
 // ===== Passenger management =====
 
 bool ARailsTrain::IsPassengerInside(ARailsPlayerCharacter *Character) const {
-  return PassengersInside.Contains(Character);
+  if (!Character) {
+    return false;
+  }
+
+  for (const TWeakObjectPtr<ARailsPlayerCharacter> &WeakPassenger :
+       PassengersInside) {
+    if (WeakPassenger.IsValid() && WeakPassenger.Get() == Character) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void ARailsTrain::OnPlayerEnterTrain(ARailsPlayerCharacter *Character) {
@@ -639,7 +687,7 @@ void ARailsTrain::OnPlayerEnterTrain(ARailsPlayerCharacter *Character) {
     return;
   }
 
-  if (PassengersInside.Contains(Character)) {
+  if (IsPassengerInside(Character)) {
     UE_LOG(LogEpochRails, Warning,
            TEXT("Player %s already registered as passenger"),
            *Character->GetName());
@@ -658,14 +706,18 @@ void ARailsTrain::OnPlayerExitTrain(ARailsPlayerCharacter *Character) {
     return;
   }
 
-  if (!PassengersInside.Contains(Character)) {
+  if (!IsPassengerInside(Character)) {
     UE_LOG(LogEpochRails, Warning,
            TEXT("Player %s was not registered as passenger"),
            *Character->GetName());
     return;
   }
 
-  PassengersInside.Remove(Character);
+  // Remove using RemoveAll with predicate to handle TWeakObjectPtr
+  PassengersInside.RemoveAll([Character](const TWeakObjectPtr<ARailsPlayerCharacter> &WeakPassenger) {
+    return WeakPassenger.IsValid() && WeakPassenger.Get() == Character;
+  });
+
   SwitchInputMappingContext(Character, false);
 
   UE_LOG(LogEpochRails, Log, TEXT("Player %s exited train %s - Jump enabled"),
