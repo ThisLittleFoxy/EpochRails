@@ -3,9 +3,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
+#include "GameFramework/Pawn.h"
 
 #include "Components/SplineComponent.h"
+#include "GameFramework/FloatingPawnMovement.h"
 #include "Components/WidgetComponent.h"
 
 #include "TrainPhysicsComponent.h"
@@ -30,7 +31,7 @@ enum class ETrainState : uint8 {
 };
 
 UCLASS(Blueprintable)
-class EPOCHRAILS_API ARailsTrain : public AActor {
+class EPOCHRAILS_API ARailsTrain : public APawn {
   GENERATED_BODY()
 
 public:
@@ -179,6 +180,9 @@ protected:
   // ===== Components =====
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
   USceneComponent *TrainRoot = nullptr;
+
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+  UFloatingPawnMovement *MovementComponent = nullptr;
 
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
   UStaticMeshComponent *TrainBodyMesh = nullptr;

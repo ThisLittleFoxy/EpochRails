@@ -4,6 +4,7 @@
 #include "Components/BoxComponent.h"
 #include "Components/SplineComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "GameFramework/FloatingPawnMovement.h"
 #include "RailsTrain.h"
 
 AWagon::AWagon() {
@@ -12,6 +13,15 @@ AWagon::AWagon() {
   // Create root
   WagonRoot = CreateDefaultSubobject<USceneComponent>(TEXT("WagonRoot"));
   RootComponent = WagonRoot;
+
+  // Create FloatingPawnMovement for smooth interpolated movement
+  MovementComponent =
+      CreateDefaultSubobject<UFloatingPawnMovement>(TEXT("MovementComponent"));
+  MovementComponent->UpdatedComponent = WagonRoot;
+  MovementComponent->MaxSpeed = 5000.0f;
+  MovementComponent->Acceleration = 2000.0f;
+  MovementComponent->Deceleration = 4000.0f;
+  MovementComponent->TurningBoost = 0.0f;
 
   // Create front attachment point
   FrontAttachmentPoint =
@@ -32,7 +42,7 @@ AWagon::AWagon() {
 
   PlatformMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
   PlatformMesh->SetCollisionProfileName(
-      TEXT("BlockAllDynamic")); // или BlockAll
+      TEXT("BlockAllDynamic")); // пїЅпїЅпїЅ BlockAll
   PlatformMesh->SetGenerateOverlapEvents(false);
   PlatformMesh->SetCanEverAffectNavigation(false);
   PlatformMesh->SetSimulatePhysics(false);
@@ -65,29 +75,54 @@ void AWagon::Tick(float DeltaTime) {
   if (!CachedSplineComponent)
     return;
 
+  // Clamp delta time to prevent large jumps
+  const float SafeDeltaTime = FMath::Min(DeltaTime, 0.033f);
+
   const float SplineLength = CachedSplineComponent->GetSplineLength();
 
-  // Always snap to TargetDistance (kinematic rigid coupling)
-  CurrentSplineDistance = TargetDistance;
+  // Smoothly interpolate to target distance instead of snapping
+  const float FollowSpeed = 10.0f;
+  CurrentSplineDistance = FMath::FInterpTo(CurrentSplineDistance, TargetDistance,
+                                           SafeDeltaTime, FollowSpeed);
 
+  // Wrap spline distance
   while (CurrentSplineDistance < 0.0f)
     CurrentSplineDistance += SplineLength;
   while (CurrentSplineDistance >= SplineLength)
     CurrentSplineDistance -= SplineLength;
 
-  FVector NewLocation = CachedSplineComponent->GetLocationAtDistanceAlongSpline(
-      CurrentSplineDistance, ESplineCoordinateSpace::World);
+  // Calculate target position on spline
+  FVector TargetLocation =
+      CachedSplineComponent->GetLocationAtDistanceAlongSpline(
+          CurrentSplineDistance, ESplineCoordinateSpace::World);
 
   const FVector Up = CachedSplineComponent->GetUpVectorAtDistanceAlongSpline(
       CurrentSplineDistance, ESplineCoordinateSpace::World);
-  NewLocation += Up * HeightOffset;
+  TargetLocation += Up * HeightOffset;
 
-  const FRotator NewRotation =
+  const FRotator TargetRotation =
       CachedSplineComponent->GetRotationAtDistanceAlongSpline(
           CurrentSplineDistance, ESplineCoordinateSpace::World);
 
-  SetActorLocationAndRotation(NewLocation, NewRotation, false, nullptr,
-                              ETeleportType::TeleportPhysics);
+  // Smooth interpolation for position and rotation
+  const float InterpSpeed = 15.0f;
+  FVector CurrentLocation = GetActorLocation();
+  FRotator CurrentRotation = GetActorRotation();
+
+  FVector NewLocation =
+      FMath::VInterpTo(CurrentLocation, TargetLocation, SafeDeltaTime, InterpSpeed);
+  FRotator NewRotation =
+      FMath::RInterpTo(CurrentRotation, TargetRotation, SafeDeltaTime, InterpSpeed);
+
+  // Use movement component for smooth physics-aware movement
+  if (MovementComponent) {
+    FHitResult Hit;
+    MovementComponent->SafeMoveUpdatedComponent(
+        NewLocation - CurrentLocation, NewRotation.Quaternion(), true, Hit);
+  } else {
+    SetActorLocationAndRotation(NewLocation, NewRotation, true, nullptr,
+                                ETeleportType::None);
+  }
 }
 
 
