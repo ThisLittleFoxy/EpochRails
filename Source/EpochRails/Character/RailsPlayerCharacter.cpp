@@ -378,7 +378,11 @@ void ARailsPlayerCharacter::DoJumpEnd() { StopJumping(); }
 void ARailsPlayerCharacter::OnThrottleInput(const FInputActionValue &Value) {
   if (ControlledTrain) {
     float ThrottleValue = Value.Get<float>();
-    ControlledTrain->ApplyThrottle(ThrottleValue);
+    // Adjust speed based on throttle input
+    ControlledTrain->SetSpeed(ThrottleValue);
+    if (ThrottleValue > 0.0f) {
+      ControlledTrain->StartTrain();
+    }
 
     UE_LOG(LogEpochRails, Verbose, TEXT("Throttle input: %f"), ThrottleValue);
   }
@@ -387,7 +391,9 @@ void ARailsPlayerCharacter::OnThrottleInput(const FInputActionValue &Value) {
 void ARailsPlayerCharacter::OnBrakeInput(const FInputActionValue &Value) {
   if (ControlledTrain) {
     float BrakeValue = Value.Get<float>();
-    ControlledTrain->ApplyBrake(BrakeValue);
+    if (BrakeValue > 0.5f) {
+      ControlledTrain->StopTrain();
+    }
 
     UE_LOG(LogEpochRails, Verbose, TEXT("Brake input: %f"), BrakeValue);
   }
