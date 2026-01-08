@@ -2,6 +2,7 @@
 
 #include "RailsTrain.h"
 
+#include "UObject/ConstructorHelpers.h"
 #include "Character/RailsPlayerCharacter.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -23,6 +24,19 @@
 ARailsTrain::ARailsTrain() {
   PrimaryActorTick.bCanEverTick = true;
   PrimaryActorTick.TickGroup = TG_PrePhysics;
+
+  // Load default widget classes
+  static ConstructorHelpers::FClassFinder<UTrainSpeedometerWidget> SpeedometerWidgetBP(
+      TEXT("/Game/Train/BP_Train/UI_Train/WBP_TrainSpeedometer"));
+  if (SpeedometerWidgetBP.Succeeded()) {
+    SpeedometerWidgetClass = SpeedometerWidgetBP.Class;
+  }
+
+  static ConstructorHelpers::FClassFinder<UUserWidget> ControlPanelWidgetBP(
+      TEXT("/Game/Train/BP_Train/UI_Train/WBP_TrainControlPanel"));
+  if (ControlPanelWidgetBP.Succeeded()) {
+    ControlPanelWidgetClass = ControlPanelWidgetBP.Class;
+  }
 
   // Create root component
   TrainRoot = CreateDefaultSubobject<USceneComponent>(TEXT("TrainRoot"));
