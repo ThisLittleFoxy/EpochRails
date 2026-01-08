@@ -278,28 +278,14 @@ void ARailsTrain::MoveToDistance(float Distance) {
       CachedSplineComponent->GetRotationAtDistanceAlongSpline(
           Distance, ESplineCoordinateSpace::World);
 
-  // Smooth interpolation for position and rotation
-  const float InterpSpeed = 15.0f;
-  const float DeltaTime = GetWorld()->GetDeltaSeconds();
-
-  FVector CurrentLocation = GetActorLocation();
-  FRotator CurrentRotation = GetActorRotation();
-
-  // Interpolate position smoothly
-  FVector NewLocation =
-      FMath::VInterpTo(CurrentLocation, TargetLocation, DeltaTime, InterpSpeed);
-
-  // Interpolate rotation smoothly
-  FRotator NewRotation =
-      FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, InterpSpeed);
-
-  // Use sweep for collision detection if MovementComponent available
+  // Move directly to target - spline provides smooth path
   if (MovementComponent) {
+    FVector CurrentLocation = GetActorLocation();
     FHitResult Hit;
     MovementComponent->SafeMoveUpdatedComponent(
-        NewLocation - CurrentLocation, NewRotation.Quaternion(), true, Hit);
+        TargetLocation - CurrentLocation, TargetRotation.Quaternion(), true, Hit);
   } else {
-    SetActorLocationAndRotation(NewLocation, NewRotation, true, nullptr,
+    SetActorLocationAndRotation(TargetLocation, TargetRotation, true, nullptr,
                                 ETeleportType::None);
   }
 }

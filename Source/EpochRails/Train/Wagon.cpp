@@ -102,23 +102,14 @@ void AWagon::Tick(float DeltaTime) {
       CachedSplineComponent->GetRotationAtDistanceAlongSpline(
           CurrentSplineDistance, ESplineCoordinateSpace::World);
 
-  // Smooth interpolation for position and rotation
-  const float InterpSpeed = 15.0f;
-  FVector CurrentLocation = GetActorLocation();
-  FRotator CurrentRotation = GetActorRotation();
-
-  FVector NewLocation =
-      FMath::VInterpTo(CurrentLocation, TargetLocation, SafeDeltaTime, InterpSpeed);
-  FRotator NewRotation =
-      FMath::RInterpTo(CurrentRotation, TargetRotation, SafeDeltaTime, InterpSpeed);
-
-  // Use movement component for smooth physics-aware movement
+  // Move directly to target - spline provides smooth path
   if (MovementComponent) {
+    FVector CurrentLocation = GetActorLocation();
     FHitResult Hit;
     MovementComponent->SafeMoveUpdatedComponent(
-        NewLocation - CurrentLocation, NewRotation.Quaternion(), true, Hit);
+        TargetLocation - CurrentLocation, TargetRotation.Quaternion(), true, Hit);
   } else {
-    SetActorLocationAndRotation(NewLocation, NewRotation, true, nullptr,
+    SetActorLocationAndRotation(TargetLocation, TargetRotation, true, nullptr,
                                 ETeleportType::None);
   }
 }
