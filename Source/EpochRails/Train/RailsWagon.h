@@ -115,13 +115,17 @@ protected:
 
   // ===== Movement Settings =====
 
-  /** Distance to maintain from the leader vehicle */
+  /** Gap between couplers when connected (adjustable in editor) */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wagon|Movement")
-  float FollowDistance = 500.0f;
+  float CouplingGap = 50.0f;
 
   /** Speed of position/rotation interpolation */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wagon|Movement")
   float InterpSpeed = 8.0f;
+
+  /** Calculated distance to maintain from the leader (based on coupler positions) */
+  UPROPERTY(BlueprintReadOnly, Category = "Wagon|Movement")
+  float FollowDistance = 0.0f;
 
   // ===== Chain State =====
 
@@ -150,6 +154,9 @@ protected:
 
   /** Get the leader's current spline distance */
   float GetLeaderSplineDistance() const;
+
+  /** Calculate follow distance based on coupler positions */
+  float CalculateFollowDistance(AActor *Leader) const;
 
   /** Update position and rotation based on spline */
   void UpdateMovement(float DeltaTime);

@@ -79,6 +79,9 @@ void ARailsWagon::AttachToLeader(AActor *Leader, USplineComponent *Spline) {
   LeaderVehicle = Leader;
   CachedSpline = Spline;
 
+  // Calculate FollowDistance from coupler positions
+  FollowDistance = CalculateFollowDistance(Leader);
+
   // Initialize position behind the leader
   float LeaderDistance = GetLeaderSplineDistance();
   CurrentSplineDistance = FMath::Max(0.0f, LeaderDistance - FollowDistance);
@@ -91,8 +94,40 @@ void ARailsWagon::AttachToLeader(AActor *Leader, USplineComponent *Spline) {
 
   SetActorLocationAndRotation(InitialLocation, InitialRotation);
 
-  UE_LOG(LogTemp, Log, TEXT("Wagon attached to %s at distance %.1f"),
-         *Leader->GetName(), CurrentSplineDistance);
+  UE_LOG(LogTemp, Log, TEXT("Wagon attached to %s (FollowDistance: %.1f, calculated from couplers)"),
+         *Leader->GetName(), FollowDistance);
+}
+
+float ARailsWagon::CalculateFollowDistance(AActor *Leader) const {
+  if (!Leader || !FrontCoupler) {
+    return 500.0f; // Fallback
+  }
+
+  // Get leader's rear coupler position (local, relative to leader's origin)
+  float LeaderRearOffset = 0.0f;
+
+  if (ARailsTrain *Train = Cast<ARailsTrain>(Leader)) {
+    if (USceneComponent *TrainRearCoupler = Train->GetRearCoupler()) {
+      // Distance from train origin to its rear coupler
+      LeaderRearOffset = FMath::Abs(TrainRearCoupler->GetRelativeLocation().X);
+    }
+  } else if (ARailsWagon *PrevWagon = Cast<ARailsWagon>(Leader)) {
+    if (USceneComponent *WagonRearCoupler = PrevWagon->GetRearCoupler()) {
+      // Distance from wagon origin to its rear coupler
+      LeaderRearOffset = FMath::Abs(WagonRearCoupler->GetRelativeLocation().X);
+    }
+  }
+
+  // Distance from this wagon's origin to its front coupler
+  float ThisFrontOffset = FMath::Abs(FrontCoupler->GetRelativeLocation().X);
+
+  // Total distance = rear offset + front offset + gap
+  float TotalDistance = LeaderRearOffset + ThisFrontOffset + CouplingGap;
+
+  UE_LOG(LogTemp, Log, TEXT("FollowDistance calculated: LeaderRear=%.1f + ThisFront=%.1f + Gap=%.1f = %.1f"),
+         LeaderRearOffset, ThisFrontOffset, CouplingGap, TotalDistance);
+
+  return TotalDistance;
 }
 
 void ARailsWagon::Detach() {
