@@ -3,15 +3,17 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/FloatingPawnMovement.h"
 #include "Wagon.generated.h"
 
 /**
  * Base wagon class - empty wheeled platform for building
  * Wagons follow train along the spline with fixed distance
+ * Now uses APawn for smoother movement
  */
 UCLASS(Blueprintable)
-class EPOCHRAILS_API AWagon : public AActor {
+class EPOCHRAILS_API AWagon : public APawn {
   GENERATED_BODY()
 
 public:
@@ -31,6 +33,10 @@ protected:
   /** Root component for the wagon */
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
   USceneComponent *WagonRoot;
+
+  /** Movement component for smooth interpolated movement */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+  UFloatingPawnMovement *MovementComponent;
 
   /** Wagon platform mesh (empty floor) */
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")

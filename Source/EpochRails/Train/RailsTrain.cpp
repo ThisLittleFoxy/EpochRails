@@ -12,6 +12,7 @@
 #include "EpochRails.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/FloatingPawnMovement.h"
 #include "GameFramework/PlayerController.h"
 #include "InputMappingContext.h"
 #include "Kismet/KismetMathLibrary.h"
@@ -26,6 +27,15 @@ ARailsTrain::ARailsTrain() {
   // Create root component
   TrainRoot = CreateDefaultSubobject<USceneComponent>(TEXT("TrainRoot"));
   RootComponent = TrainRoot;
+
+  // Create FloatingPawnMovement for smooth interpolated movement
+  MovementComponent =
+      CreateDefaultSubobject<UFloatingPawnMovement>(TEXT("MovementComponent"));
+  MovementComponent->UpdatedComponent = TrainRoot;
+  MovementComponent->MaxSpeed = 5000.0f;          // Max speed in cm/s
+  MovementComponent->Acceleration = 2000.0f;      // Acceleration rate
+  MovementComponent->Deceleration = 4000.0f;      // Deceleration rate
+  MovementComponent->TurningBoost = 0.0f;         // No turning boost for rails
 
   // Create train body mesh
   TrainBodyMesh =
@@ -145,19 +155,19 @@ void ARailsTrain::BeginPlay() {
 void ARailsTrain::Tick(float DeltaTime) {
   Super::Tick(DeltaTime);
 
+  // Clamp delta time to prevent large jumps
+  const float SafeDeltaTime = FMath::Min(DeltaTime, 0.033f); // Max ~30 FPS step
+
   // Update gear shift timer
-  TimeSinceLastGearShift += DeltaTime;
+  TimeSinceLastGearShift += SafeDeltaTime;
 
   // Apply continuous braking if button held
   if (bBrakeButtonHeld) {
-    CurrentThrottle = FMath::Max(0.0f, CurrentThrottle - (0.5f * DeltaTime));
+    CurrentThrottle = FMath::Max(0.0f, CurrentThrottle - (0.5f * SafeDeltaTime));
     CurrentBrake = 1.0f;
   }
 
-  // Clamp DeltaTime for physics stability
-  const float SafeDeltaTime = FMath::Min(DeltaTime, 0.05f);
-
-  // Update movement
+  // Update movement (only once!)
   UpdateTrainMovement(SafeDeltaTime);
 
   // Draw debug info if enabled
@@ -247,14 +257,37 @@ void ARailsTrain::MoveToDistance(float Distance) {
     return;
   }
 
-  FVector NewLocation = CachedSplineComponent->GetLocationAtDistanceAlongSpline(
-      Distance, ESplineCoordinateSpace::World);
-  FRotator NewRotation =
+  FVector TargetLocation =
+      CachedSplineComponent->GetLocationAtDistanceAlongSpline(
+          Distance, ESplineCoordinateSpace::World);
+  FRotator TargetRotation =
       CachedSplineComponent->GetRotationAtDistanceAlongSpline(
           Distance, ESplineCoordinateSpace::World);
 
-  SetActorLocationAndRotation(NewLocation, NewRotation, false, nullptr,
-                              ETeleportType::None);
+  // Smooth interpolation for position and rotation
+  const float InterpSpeed = 15.0f;
+  const float DeltaTime = GetWorld()->GetDeltaSeconds();
+
+  FVector CurrentLocation = GetActorLocation();
+  FRotator CurrentRotation = GetActorRotation();
+
+  // Interpolate position smoothly
+  FVector NewLocation =
+      FMath::VInterpTo(CurrentLocation, TargetLocation, DeltaTime, InterpSpeed);
+
+  // Interpolate rotation smoothly
+  FRotator NewRotation =
+      FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, InterpSpeed);
+
+  // Use sweep for collision detection if MovementComponent available
+  if (MovementComponent) {
+    FHitResult Hit;
+    MovementComponent->SafeMoveUpdatedComponent(
+        NewLocation - CurrentLocation, NewRotation.Quaternion(), true, Hit);
+  } else {
+    SetActorLocationAndRotation(NewLocation, NewRotation, true, nullptr,
+                                ETeleportType::None);
+  }
 }
 
 float ARailsTrain::CalculateTrackGrade() {
