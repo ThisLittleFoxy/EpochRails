@@ -102,16 +102,8 @@ void AWagon::Tick(float DeltaTime) {
       CachedSplineComponent->GetRotationAtDistanceAlongSpline(
           CurrentSplineDistance, ESplineCoordinateSpace::World);
 
-  // Move directly to target - spline provides smooth path
-  if (MovementComponent) {
-    FVector CurrentLocation = GetActorLocation();
-    FHitResult Hit;
-    MovementComponent->SafeMoveUpdatedComponent(
-        TargetLocation - CurrentLocation, TargetRotation.Quaternion(), true, Hit);
-  } else {
-    SetActorLocationAndRotation(TargetLocation, TargetRotation, true, nullptr,
-                                ETeleportType::None);
-  }
+  // Move directly to target - spline provides smooth path, no collision needed
+  SetActorLocationAndRotation(TargetLocation, TargetRotation);
 }
 
 
