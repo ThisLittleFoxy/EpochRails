@@ -80,10 +80,8 @@ void AWagon::Tick(float DeltaTime) {
 
   const float SplineLength = CachedSplineComponent->GetSplineLength();
 
-  // Smoothly interpolate to target distance instead of snapping
-  const float FollowSpeed = 10.0f;
-  CurrentSplineDistance = FMath::FInterpTo(CurrentSplineDistance, TargetDistance,
-                                           SafeDeltaTime, FollowSpeed);
+  // Directly use target distance - smoothness comes from position interpolation
+  CurrentSplineDistance = TargetDistance;
 
   // Wrap spline distance
   while (CurrentSplineDistance < 0.0f)
