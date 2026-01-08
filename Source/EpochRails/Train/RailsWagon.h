@@ -142,8 +142,8 @@ protected:
 
   // ===== Structures =====
 
-  /** All structures placed on this wagon */
-  UPROPERTY(BlueprintReadOnly, Category = "Wagon|Building")
+  /** All structures placed on this wagon (use GetPlacedStructures() for Blueprint access) */
+  UPROPERTY()
   TArray<TWeakObjectPtr<AActor>> PlacedStructures;
 
   // ===== Internal Methods =====
