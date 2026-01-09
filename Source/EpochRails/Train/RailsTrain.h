@@ -13,6 +13,7 @@ class UInputMappingContext;
 class UEnhancedInputLocalPlayerSubsystem;
 class ARailsSplinePath;
 class ARailsPlayerCharacter;
+class ARailsWagon;
 
 UCLASS(Blueprintable)
 class EPOCHRAILS_API ARailsTrain : public APawn {
@@ -50,6 +51,32 @@ public:
   UFUNCTION(BlueprintCallable, Category = "Train|Passengers")
   void OnPlayerExitTrain(ARailsPlayerCharacter *Character);
 
+  // ===== Wagon API =====
+
+  /** Add a wagon to the train. Returns the created wagon or nullptr on failure. */
+  UFUNCTION(BlueprintCallable, Category = "Train|Wagons")
+  ARailsWagon *AddWagon(TSubclassOf<ARailsWagon> WagonClass = nullptr);
+
+  /** Remove the last wagon from the train. Returns true if successful. */
+  UFUNCTION(BlueprintCallable, Category = "Train|Wagons")
+  bool RemoveLastWagon();
+
+  /** Get the number of attached wagons */
+  UFUNCTION(BlueprintPure, Category = "Train|Wagons")
+  int32 GetWagonCount() const { return AttachedWagons.Num(); }
+
+  /** Get all attached wagons */
+  UFUNCTION(BlueprintPure, Category = "Train|Wagons")
+  TArray<ARailsWagon *> GetAttachedWagons() const;
+
+  /** Get the current distance along the spline (needed by wagons) */
+  UFUNCTION(BlueprintPure, Category = "Train|Path")
+  float GetCurrentSplineDistance() const;
+
+  /** Get the rear coupler attachment point */
+  UFUNCTION(BlueprintPure, Category = "Train|Wagons")
+  USceneComponent *GetRearCoupler() const { return RearCoupler; }
+
 protected:
   // ===== Components =====
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
@@ -63,6 +90,20 @@ protected:
 
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
   TObjectPtr<UBoxComponent> InteriorTrigger = nullptr;
+
+  /** Rear coupler for attaching wagons */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+  TObjectPtr<USceneComponent> RearCoupler = nullptr;
+
+  // ===== Wagon settings =====
+
+  /** Default wagon class to spawn when AddWagon is called without a class */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Train|Wagons")
+  TSubclassOf<ARailsWagon> DefaultWagonClass;
+
+  /** All wagons attached to this train */
+  UPROPERTY(BlueprintReadOnly, Category = "Train|Wagons")
+  TArray<TObjectPtr<ARailsWagon>> AttachedWagons;
 
   // ===== Path settings =====
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Train|Path")

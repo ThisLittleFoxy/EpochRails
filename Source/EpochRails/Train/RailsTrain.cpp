@@ -13,6 +13,7 @@
 
 #include "Character/RailsPlayerCharacter.h"
 #include "RailsSplinePath.h"
+#include "RailsWagon.h"
 
 ARailsTrain::ARailsTrain() {
   PrimaryActorTick.bCanEverTick = true;
@@ -35,6 +36,11 @@ ARailsTrain::ARailsTrain() {
   InteriorTrigger->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
   InteriorTrigger->SetCollisionResponseToAllChannels(ECR_Ignore);
   InteriorTrigger->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+
+  // Rear coupler for wagon attachment
+  RearCoupler = CreateDefaultSubobject<USceneComponent>(TEXT("RearCoupler"));
+  RearCoupler->SetupAttachment(Root);
+  RearCoupler->SetRelativeLocation(FVector(-300.0f, 0.0f, 0.0f));
 }
 
 void ARailsTrain::BeginPlay() {
@@ -226,4 +232,118 @@ void ARailsTrain::OnInteriorEndOverlap(UPrimitiveComponent *OverlappedComponent,
   if (ARailsPlayerCharacter *Player = Cast<ARailsPlayerCharacter>(OtherActor)) {
     OnPlayerExitTrain(Player);
   }
+}
+
+// ===== Wagon API =====
+
+ARailsWagon *ARailsTrain::AddWagon(TSubclassOf<ARailsWagon> WagonClass) {
+  // Use default class if none provided
+  TSubclassOf<ARailsWagon> ClassToSpawn = WagonClass ? WagonClass : DefaultWagonClass;
+  if (!ClassToSpawn) {
+    UE_LOG(LogTemp, Warning, TEXT("ARailsTrain::AddWagon - No wagon class specified and no default set"));
+    return nullptr;
+  }
+
+  USplineComponent *Spline = GetActiveSpline();
+  if (!Spline) {
+    UE_LOG(LogTemp, Warning, TEXT("ARailsTrain::AddWagon - No active spline path"));
+    return nullptr;
+  }
+
+  // Determine the leader for the new wagon
+  AActor *Leader = nullptr;
+  if (AttachedWagons.Num() > 0) {
+    Leader = AttachedWagons.Last();
+  } else {
+    Leader = this;
+  }
+
+  // Get spawn location from leader's rear coupler
+  FVector SpawnLocation;
+  FRotator SpawnRotation;
+  if (ARailsWagon *LastWagon = Cast<ARailsWagon>(Leader)) {
+    SpawnLocation = LastWagon->GetRearCoupler()->GetComponentLocation();
+    SpawnRotation = LastWagon->GetActorRotation();
+  } else {
+    SpawnLocation = RearCoupler->GetComponentLocation();
+    SpawnRotation = GetActorRotation();
+  }
+
+  // Spawn the wagon
+  FActorSpawnParameters SpawnParams;
+  SpawnParams.Owner = this;
+  SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+  ARailsWagon *NewWagon = GetWorld()->SpawnActor<ARailsWagon>(
+      ClassToSpawn, SpawnLocation, SpawnRotation, SpawnParams);
+
+  if (!NewWagon) {
+    UE_LOG(LogTemp, Error, TEXT("ARailsTrain::AddWagon - Failed to spawn wagon"));
+    return nullptr;
+  }
+
+  // Attach to leader
+  NewWagon->AttachToLeader(Leader, Spline);
+
+  // Update chain links
+  if (ARailsWagon *PrevWagon = Cast<ARailsWagon>(Leader)) {
+    PrevWagon->SetNextWagon(NewWagon);
+  }
+
+  // Add to our list
+  AttachedWagons.Add(NewWagon);
+
+  UE_LOG(LogTemp, Log, TEXT("Added wagon %s (total: %d)"), *NewWagon->GetName(), AttachedWagons.Num());
+  return NewWagon;
+}
+
+bool ARailsTrain::RemoveLastWagon() {
+  if (AttachedWagons.Num() == 0) {
+    UE_LOG(LogTemp, Warning, TEXT("ARailsTrain::RemoveLastWagon - No wagons to remove"));
+    return false;
+  }
+
+  ARailsWagon *LastWagon = AttachedWagons.Last();
+  if (!LastWagon) {
+    AttachedWagons.Pop();
+    return false;
+  }
+
+  // Update chain - remove link from previous wagon
+  if (AttachedWagons.Num() > 1) {
+    ARailsWagon *PrevWagon = AttachedWagons[AttachedWagons.Num() - 2];
+    if (PrevWagon) {
+      PrevWagon->SetNextWagon(nullptr);
+    }
+  }
+
+  // Detach and destroy
+  LastWagon->Detach();
+  AttachedWagons.Pop();
+  LastWagon->Destroy();
+
+  UE_LOG(LogTemp, Log, TEXT("Removed last wagon (remaining: %d)"), AttachedWagons.Num());
+  return true;
+}
+
+TArray<ARailsWagon *> ARailsTrain::GetAttachedWagons() const {
+  TArray<ARailsWagon *> Result;
+  for (const TObjectPtr<ARailsWagon> &Wagon : AttachedWagons) {
+    if (Wagon) {
+      Result.Add(Wagon);
+    }
+  }
+  return Result;
+}
+
+float ARailsTrain::GetCurrentSplineDistance() const {
+  USplineComponent *Spline = GetActiveSpline();
+  if (!Spline) {
+    return 0.0f;
+  }
+
+  // Find the closest point on spline and get its distance
+  FVector CurrentLocation = GetActorLocation();
+  float InputKey = Spline->FindInputKeyClosestToWorldLocation(CurrentLocation);
+  return Spline->GetDistanceAlongSplineAtSplineInputKey(InputKey);
 }
