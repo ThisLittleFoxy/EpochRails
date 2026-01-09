@@ -1,7 +1,8 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "RailsPlayerController.h"
 #include "Blueprint/UserWidget.h"
+#include "Character/ControllableCharacterInterface.h"
 #include "Engine/LocalPlayer.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -164,22 +165,58 @@ void ARailsPlayerController::BindInputActions() {
       if (ActionName.Contains(TEXT("Move")) ||
           ActionName.Contains(TEXT("IA_Move"))) {
         EnhancedInputComponent->BindAction(Action, ETriggerEvent::Triggered,
-                                           this, &ARailsPlayerController::Move);
-        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to Move handler"),
+                                           this,
+                                           &ARailsPlayerController::HandleMove);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleMove"),
                *ActionName);
         BoundActions.Add(Action);
       } else if (ActionName.Contains(TEXT("Look")) ||
                  ActionName.Contains(TEXT("IA_Look"))) {
         EnhancedInputComponent->BindAction(Action, ETriggerEvent::Triggered,
-                                           this, &ARailsPlayerController::Look);
-        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to Look handler"),
+                                           this,
+                                           &ARailsPlayerController::HandleLook);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleLook"),
                *ActionName);
         BoundActions.Add(Action);
       } else if (ActionName.Contains(TEXT("Jump")) ||
                  ActionName.Contains(TEXT("IA_Jump"))) {
-        EnhancedInputComponent->BindAction(Action, ETriggerEvent::Triggered,
-                                           this, &ARailsPlayerController::Jump);
-        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to Jump handler"),
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Started, this,
+            &ARailsPlayerController::HandleJumpStarted);
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Completed, this,
+            &ARailsPlayerController::HandleJumpCompleted);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleJump"),
+               *ActionName);
+        BoundActions.Add(Action);
+      } else if (ActionName.Contains(TEXT("Sprint")) ||
+                 ActionName.Contains(TEXT("IA_Sprint"))) {
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Started, this,
+            &ARailsPlayerController::HandleSprintStarted);
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Completed, this,
+            &ARailsPlayerController::HandleSprintCompleted);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleSprint"),
+               *ActionName);
+        BoundActions.Add(Action);
+      } else if (ActionName.Contains(TEXT("Interact")) ||
+                 ActionName.Contains(TEXT("IA_Interact"))) {
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Started, this,
+            &ARailsPlayerController::HandleInteract);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleInteract"),
+               *ActionName);
+        BoundActions.Add(Action);
+      } else if (ActionName.Contains(TEXT("Fire")) ||
+                 ActionName.Contains(TEXT("IA_Fire"))) {
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Started, this,
+            &ARailsPlayerController::HandleFireStarted);
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Completed, this,
+            &ARailsPlayerController::HandleFireCompleted);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleFire"),
                *ActionName);
         BoundActions.Add(Action);
       } else {
@@ -189,7 +226,7 @@ void ARailsPlayerController::BindInputActions() {
     }
   }
 
-  UE_LOG(LogEpochRails, Verbose, TEXT("Total actions bound: %d"),
+  UE_LOG(LogEpochRails, Log, TEXT("Total actions bound: %d"),
          BoundActions.Num());
 }
 
@@ -226,25 +263,17 @@ bool ARailsPlayerController::ShouldUseTouchControls() const {
   return SVirtualJoystick::ShouldDisplayTouchInterface() || bForceTouchControls;
 }
 
-void ARailsPlayerController::Move(const FInputActionValue &Value) {
-  UE_LOG(LogEpochRails, Verbose, TEXT("Move called! Value: %s, Magnitude: %f"),
-         *Value.ToString(), Value.GetMagnitude());
+// ========== Movement Handlers ==========
 
-  // Get movement vector from input
+void ARailsPlayerController::HandleMove(const FInputActionValue &Value) {
   const FVector2D MovementVector = Value.Get<FVector2D>();
-  UE_LOG(LogEpochRails, Verbose, TEXT("MovementVector: X=%f, Y=%f"),
-         MovementVector.X, MovementVector.Y);
 
   APawn *ControlledPawn = GetPawn();
   if (!ControlledPawn) {
-    UE_LOG(LogEpochRails, Warning, TEXT("Move: No pawn controlled!"));
     return;
   }
 
-  UE_LOG(LogEpochRails, Verbose, TEXT("Controlled Pawn: %s"),
-         *ControlledPawn->GetName());
-
-  // Get forward and right vectors
+  // Calculate direction based on controller rotation (FPS style)
   const FRotator Rotation = GetControlRotation();
   const FRotator YawRotation(0, Rotation.Yaw, 0);
 
@@ -253,38 +282,105 @@ void ARailsPlayerController::Move(const FInputActionValue &Value) {
   const FVector RightDirection =
       FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
-  UE_LOG(LogEpochRails, Verbose,
-         TEXT("ForwardDirection: %s, RightDirection: %s"),
-         *ForwardDirection.ToString(), *RightDirection.ToString());
-
-  // Add movement input
+  // Apply movement input
   ControlledPawn->AddMovementInput(ForwardDirection, MovementVector.Y);
   ControlledPawn->AddMovementInput(RightDirection, MovementVector.X);
-
-  UE_LOG(LogEpochRails, Verbose, TEXT("AddMovementInput called"));
 }
 
-void ARailsPlayerController::Look(const FInputActionValue &Value) {
-  UE_LOG(LogEpochRails, Verbose, TEXT("Look called! Value: %s, Magnitude: %f"),
-         *Value.ToString(), Value.GetMagnitude());
-
-  // Get look axis vector
+void ARailsPlayerController::HandleLook(const FInputActionValue &Value) {
   const FVector2D LookAxisVector = Value.Get<FVector2D>();
-  UE_LOG(LogEpochRails, Verbose, TEXT("LookAxisVector: X=%f, Y=%f"),
-         LookAxisVector.X, LookAxisVector.Y);
 
-  // Add yaw and pitch input
+  // Add yaw and pitch input to controller
   AddYawInput(LookAxisVector.X);
   AddPitchInput(LookAxisVector.Y);
 }
 
-void ARailsPlayerController::Jump(const FInputActionValue &Value) {
-  UE_LOG(LogEpochRails, Verbose, TEXT("Jump called! Value: %s"),
-         *Value.ToString());
+// ========== Jump Handlers ==========
 
+void ARailsPlayerController::HandleJumpStarted(const FInputActionValue &Value) {
   if (ACharacter *ControlledCharacter = Cast<ACharacter>(GetPawn())) {
     ControlledCharacter->Jump();
-    UE_LOG(LogEpochRails, Log, TEXT("Jump executed on character"));
+  }
+}
+
+void ARailsPlayerController::HandleJumpCompleted(
+    const FInputActionValue &Value) {
+  if (ACharacter *ControlledCharacter = Cast<ACharacter>(GetPawn())) {
+    ControlledCharacter->StopJumping();
+  }
+}
+
+// ========== Sprint Handlers ==========
+
+void ARailsPlayerController::HandleSprintStarted(
+    const FInputActionValue &Value) {
+  APawn *ControlledPawn = GetPawn();
+  if (!ControlledPawn) {
+    return;
+  }
+
+  // Call interface method if pawn implements it
+  if (ControlledPawn->Implements<UControllableCharacterInterface>()) {
+    IControllableCharacterInterface::Execute_StartSprint(ControlledPawn);
+    UE_LOG(LogEpochRails, Log, TEXT("Sprint started via interface"));
+  }
+}
+
+void ARailsPlayerController::HandleSprintCompleted(
+    const FInputActionValue &Value) {
+  APawn *ControlledPawn = GetPawn();
+  if (!ControlledPawn) {
+    return;
+  }
+
+  // Call interface method if pawn implements it
+  if (ControlledPawn->Implements<UControllableCharacterInterface>()) {
+    IControllableCharacterInterface::Execute_StopSprint(ControlledPawn);
+    UE_LOG(LogEpochRails, Log, TEXT("Sprint stopped via interface"));
+  }
+}
+
+// ========== Interact Handler ==========
+
+void ARailsPlayerController::HandleInteract(const FInputActionValue &Value) {
+  APawn *ControlledPawn = GetPawn();
+  if (!ControlledPawn) {
+    return;
+  }
+
+  // Call interface method if pawn implements it
+  if (ControlledPawn->Implements<UControllableCharacterInterface>()) {
+    IControllableCharacterInterface::Execute_DoInteract(ControlledPawn);
+    UE_LOG(LogEpochRails, Log, TEXT("Interact triggered via interface"));
+  }
+}
+
+// ========== Fire Handlers ==========
+
+void ARailsPlayerController::HandleFireStarted(const FInputActionValue &Value) {
+  APawn *ControlledPawn = GetPawn();
+  if (!ControlledPawn) {
+    return;
+  }
+
+  // Call interface method if pawn implements it
+  if (ControlledPawn->Implements<UControllableCharacterInterface>()) {
+    IControllableCharacterInterface::Execute_StartFire(ControlledPawn);
+    UE_LOG(LogEpochRails, Log, TEXT("Fire started via interface"));
+  }
+}
+
+void ARailsPlayerController::HandleFireCompleted(
+    const FInputActionValue &Value) {
+  APawn *ControlledPawn = GetPawn();
+  if (!ControlledPawn) {
+    return;
+  }
+
+  // Call interface method if pawn implements it
+  if (ControlledPawn->Implements<UControllableCharacterInterface>()) {
+    IControllableCharacterInterface::Execute_StopFire(ControlledPawn);
+    UE_LOG(LogEpochRails, Log, TEXT("Fire stopped via interface"));
   }
 }
 

@@ -8,27 +8,37 @@
 
 class UInputMappingContext;
 class UUserWidget;
+struct FInputActionValue;
 
 /**
- * Basic PlayerController class for a third person game
- * Manages input mappings
+ * FPS PlayerController that handles all input and delegates to the controlled pawn.
+ *
+ * The controller processes input and calls methods on the pawn via IControllableCharacterInterface.
+ * For basic movement (Move, Look, Jump), it uses standard Pawn/Character methods.
+ * For extended actions (Sprint, Interact, Fire), it uses the interface.
+ *
+ * Your Blueprint Character should implement IControllableCharacterInterface to receive
+ * Sprint, Interact, and Fire inputs.
  */
 UCLASS(abstract)
 class ARailsPlayerController : public APlayerController {
   GENERATED_BODY()
 
 public:
-  // ADD THIS CONSTRUCTOR DECLARATION
   ARailsPlayerController();
 
 protected:
-  /** Input Mapping Contexts */
+  // ========== Input Mapping Contexts ==========
+
+  /** Input Mapping Contexts applied to all platforms */
   UPROPERTY(EditAnywhere, Category = "Input|Input Mappings")
   TArray<UInputMappingContext *> DefaultMappingContexts;
 
-  /** Input Mapping Contexts */
+  /** Input Mapping Contexts excluded on mobile (e.g., mouse look) */
   UPROPERTY(EditAnywhere, Category = "Input|Input Mappings")
   TArray<UInputMappingContext *> MobileExcludedMappingContexts;
+
+  // ========== Touch Controls ==========
 
   /** Mobile controls widget to spawn */
   UPROPERTY(EditAnywhere, Category = "Input|Touch Controls")
@@ -38,27 +48,23 @@ protected:
   UPROPERTY()
   TObjectPtr<UUserWidget> MobileControlsWidget;
 
-  /** If true, the player will use UMG touch controls even if not playing on
-   * mobile platforms */
+  /** If true, force UMG touch controls even on non-mobile platforms */
   UPROPERTY(EditAnywhere, Config, Category = "Input|Touch Controls")
   bool bForceTouchControls = false;
 
-      /** Show/hide mouse cursor */
-  UFUNCTION(BlueprintCallable, Category = "UI")
-  void SetMouseCursorVisible(bool bVisible);
+  // ========== UI State ==========
 
   /** Currently interacting with UI widget */
   UPROPERTY(BlueprintReadOnly, Category = "UI")
   bool bIsInteractingWithUI = false;
 
-  /** Gameplay initialization */
+  // ========== Lifecycle ==========
+
   virtual void BeginPlay() override;
-
-  /** Input mapping context setup */
   virtual void SetupInputComponent() override;
-
-  /** Called after possession */
   virtual void OnPossess(APawn *InPawn) override;
+
+  // ========== Input Setup ==========
 
   /** Returns true if the player should use UMG touch controls */
   bool ShouldUseTouchControls() const;
@@ -66,16 +72,46 @@ protected:
   /** Bind all input actions from mapping contexts automatically */
   void BindInputActions();
 
-  /** Movement input handler */
-  UFUNCTION()
-  void Move(const FInputActionValue &Value);
+  // ========== Input Handlers ==========
 
-  /** Look input handler */
+  /** Movement input - calculates direction from camera and applies to pawn */
   UFUNCTION()
-  void Look(const FInputActionValue &Value);
+  void HandleMove(const FInputActionValue &Value);
 
-  /** Jump input handler */
+  /** Look input - applies yaw/pitch to controller rotation */
   UFUNCTION()
-  void Jump(const FInputActionValue &Value);
+  void HandleLook(const FInputActionValue &Value);
 
+  /** Jump started */
+  UFUNCTION()
+  void HandleJumpStarted(const FInputActionValue &Value);
+
+  /** Jump completed */
+  UFUNCTION()
+  void HandleJumpCompleted(const FInputActionValue &Value);
+
+  /** Sprint started */
+  UFUNCTION()
+  void HandleSprintStarted(const FInputActionValue &Value);
+
+  /** Sprint completed */
+  UFUNCTION()
+  void HandleSprintCompleted(const FInputActionValue &Value);
+
+  /** Interact pressed */
+  UFUNCTION()
+  void HandleInteract(const FInputActionValue &Value);
+
+  /** Fire started */
+  UFUNCTION()
+  void HandleFireStarted(const FInputActionValue &Value);
+
+  /** Fire completed */
+  UFUNCTION()
+  void HandleFireCompleted(const FInputActionValue &Value);
+
+public:
+  /** Show/hide mouse cursor and set appropriate input mode */
+  UFUNCTION(BlueprintCallable, Category = "UI")
+  void SetMouseCursorVisible(bool bVisible);
 };
