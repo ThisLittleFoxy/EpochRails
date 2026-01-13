@@ -3,7 +3,6 @@
 #include "InteractableActor.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
-#include "Character/RailsPlayerCharacter.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Character.h"
 #include "TimerManager.h"
@@ -24,7 +23,7 @@ AInteractableActor::AInteractableActor() {
 void AInteractableActor::BeginPlay() { Super::BeginPlay(); }
 
 void AInteractableActor::OnInteractionFocusBegin_Implementation(
-    ARailsPlayerCharacter *PlayerCharacter) {
+    ACharacter *PlayerCharacter) {
   if (bEnableDebugLog) {
     UE_LOG(LogTemp, Log, TEXT("%s: Player started looking at this object"),
            *GetName());
@@ -35,7 +34,7 @@ void AInteractableActor::OnInteractionFocusBegin_Implementation(
 }
 
 void AInteractableActor::OnInteractionFocusEnd_Implementation(
-    ARailsPlayerCharacter *PlayerCharacter) {
+    ACharacter *PlayerCharacter) {
   if (bEnableDebugLog) {
     UE_LOG(LogTemp, Log, TEXT("%s: Player stopped looking at this object"),
            *GetName());
@@ -46,7 +45,7 @@ void AInteractableActor::OnInteractionFocusEnd_Implementation(
 }
 
 bool AInteractableActor::OnInteract_Implementation(
-    ARailsPlayerCharacter *PlayerCharacter) {
+    ACharacter *PlayerCharacter) {
   if (bEnableDebugLog) {
     UE_LOG(LogTemp, Log, TEXT("%s: Player interacted with this object"),
            *GetName());
@@ -84,7 +83,7 @@ FText AInteractableActor::GetInteractionAction_Implementation() const {
 }
 
 bool AInteractableActor::CanInteract_Implementation(
-    ARailsPlayerCharacter *PlayerCharacter) const {
+    ACharacter *PlayerCharacter) const {
   return bCanInteract;
 }
 
@@ -95,7 +94,7 @@ float AInteractableActor::GetInteractionDistance_Implementation() const {
 // ========== Animation System Implementation ==========
 
 bool AInteractableActor::PlayInteractionAnimation(
-    ARailsPlayerCharacter *PlayerCharacter) {
+    ACharacter *PlayerCharacter) {
   if (!PlayerCharacter) {
     UE_LOG(LogTemp, Warning,
            TEXT("%s: Cannot play animation - PlayerCharacter is null"),
@@ -211,7 +210,7 @@ UAnimMontage *AInteractableActor::GetInteractionAnimationMontage() const {
 }
 
 void AInteractableActor::OnInteractionAnimationComplete(
-    ARailsPlayerCharacter *PlayerCharacter) {
+    ACharacter *PlayerCharacter) {
   if (bEnableDebugLog) {
     UE_LOG(LogTemp, Log, TEXT("%s: Animation completed"), *GetName());
   }

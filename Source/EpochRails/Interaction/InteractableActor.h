@@ -8,7 +8,7 @@
 #include "InteractableActor.generated.h"
 
 class UStaticMeshComponent;
-class ARailsPlayerCharacter;
+class ACharacter;
 class UAnimMontage;
 
 /**
@@ -52,14 +52,14 @@ public:
    * Override in Blueprint for custom behavior
    */
   virtual void OnInteractionFocusBegin_Implementation(
-      ARailsPlayerCharacter *PlayerCharacter) override;
+      ACharacter *PlayerCharacter) override;
 
   /**
    * Called when player stops looking at this object
    * Override in Blueprint for custom behavior
    */
   virtual void OnInteractionFocusEnd_Implementation(
-      ARailsPlayerCharacter *PlayerCharacter) override;
+      ACharacter *PlayerCharacter) override;
 
   /**
    * Called when player interacts with this object
@@ -67,7 +67,7 @@ public:
    * @return true if interaction was successful
    */
   virtual bool
-  OnInteract_Implementation(ARailsPlayerCharacter *PlayerCharacter) override;
+  OnInteract_Implementation(ACharacter *PlayerCharacter) override;
 
   /**
    * Get the name to display when player looks at this object
@@ -83,7 +83,7 @@ public:
    * Check if this object can currently be interacted with
    */
   virtual bool CanInteract_Implementation(
-      ARailsPlayerCharacter *PlayerCharacter) const override;
+      ACharacter *PlayerCharacter) const override;
 
   /**
    * Get the maximum interaction distance
@@ -99,7 +99,7 @@ protected:
    * @return true if animation started successfully
    */
   UFUNCTION(BlueprintCallable, Category = "Interaction|Animation")
-  bool PlayInteractionAnimation(ARailsPlayerCharacter *PlayerCharacter);
+  bool PlayInteractionAnimation(ACharacter *PlayerCharacter);
 
   /**
    * Get the animation montage for current interaction type
@@ -113,21 +113,21 @@ protected:
    * Called when interaction animation completes
    */
   UFUNCTION(BlueprintCallable, Category = "Interaction|Animation")
-  void OnInteractionAnimationComplete(ARailsPlayerCharacter *PlayerCharacter);
+  void OnInteractionAnimationComplete(ACharacter *PlayerCharacter);
 
   /**
    * Blueprint event called when animation starts
    */
   UFUNCTION(BlueprintImplementableEvent, Category = "Interaction|Animation",
             meta = (DisplayName = "On Animation Start"))
-  void BP_OnAnimationStart(ARailsPlayerCharacter *PlayerCharacter);
+  void BP_OnAnimationStart(ACharacter *PlayerCharacter);
 
   /**
    * Blueprint event called when animation completes
    */
   UFUNCTION(BlueprintImplementableEvent, Category = "Interaction|Animation",
             meta = (DisplayName = "On Animation Complete"))
-  void BP_OnAnimationComplete(ARailsPlayerCharacter *PlayerCharacter);
+  void BP_OnAnimationComplete(ACharacter *PlayerCharacter);
 
   // ========== Blueprint Events ==========
 
@@ -136,14 +136,14 @@ protected:
    */
   UFUNCTION(BlueprintImplementableEvent, Category = "Interaction",
             meta = (DisplayName = "On Focus Begin"))
-  void BP_OnInteractionFocusBegin(ARailsPlayerCharacter *PlayerCharacter);
+  void BP_OnInteractionFocusBegin(ACharacter *PlayerCharacter);
 
   /**
    * Blueprint event called when player stops looking at this object
    */
   UFUNCTION(BlueprintImplementableEvent, Category = "Interaction",
             meta = (DisplayName = "On Focus End"))
-  void BP_OnInteractionFocusEnd(ARailsPlayerCharacter *PlayerCharacter);
+  void BP_OnInteractionFocusEnd(ACharacter *PlayerCharacter);
 
   /**
    * Blueprint event called when player interacts with this object
@@ -151,7 +151,7 @@ protected:
    */
   UFUNCTION(BlueprintImplementableEvent, Category = "Interaction",
             meta = (DisplayName = "On Interact"))
-  bool BP_OnInteract(ARailsPlayerCharacter *PlayerCharacter);
+  bool BP_OnInteract(ACharacter *PlayerCharacter);
 
 protected:
   // ========== Components ==========
@@ -249,7 +249,7 @@ protected:
 private:
   /** Cache reference to character currently playing animation */
   UPROPERTY()
-  ARailsPlayerCharacter *AnimatingCharacter = nullptr;
+  ACharacter *AnimatingCharacter = nullptr;
 
   /** Delegate handle for animation complete callback */
   FTimerHandle AnimationCompleteTimerHandle;

@@ -7,7 +7,6 @@
 #include "InteractionComponent.generated.h"
 
 class IInteractableInterface;
-class ARailsPlayerCharacter;
 class UWidgetInteractionComponent;
 class UCameraComponent;
 

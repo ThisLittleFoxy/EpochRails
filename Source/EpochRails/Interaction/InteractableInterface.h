@@ -6,7 +6,7 @@
 #include "UObject/Interface.h"
 #include "InteractableInterface.generated.h"
 
-class ARailsPlayerCharacter;
+class ACharacter;
 
 /**
  * Interface for objects that can be interacted with by the player
@@ -27,7 +27,7 @@ public:
    * @param PlayerCharacter - The player character looking at this object
    */
   UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Interaction")
-  void OnInteractionFocusBegin(ARailsPlayerCharacter *PlayerCharacter);
+  void OnInteractionFocusBegin(ACharacter *PlayerCharacter);
 
   /**
    * Called when player stops looking at the interactable object
@@ -35,7 +35,7 @@ public:
    * @param PlayerCharacter - The player character that was looking at this object
    */
   UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Interaction")
-  void OnInteractionFocusEnd(ARailsPlayerCharacter *PlayerCharacter);
+  void OnInteractionFocusEnd(ACharacter *PlayerCharacter);
 
   /**
    * Called when player presses the interact button while looking at this object
@@ -44,7 +44,7 @@ public:
    * @return true if interaction was successful, false otherwise
    */
   UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Interaction")
-  bool OnInteract(ARailsPlayerCharacter *PlayerCharacter);
+  bool OnInteract(ACharacter *PlayerCharacter);
 
   /**
    * Get the name/description to display when player looks at this object
@@ -66,7 +66,7 @@ public:
    * @return true if interaction is currently possible, false otherwise
    */
   UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Interaction")
-  bool CanInteract(ARailsPlayerCharacter *PlayerCharacter) const;
+  bool CanInteract(ACharacter *PlayerCharacter) const;
 
   /**
    * Get the maximum distance from which this object can be interacted with
