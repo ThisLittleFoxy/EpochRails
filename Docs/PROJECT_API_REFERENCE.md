@@ -6,15 +6,17 @@
 
 # 📑 Содержание
 
-1. [ARailsPlayerCharacter](#1-arailsplayercharacter) - Игровой персонаж
-2. [ARailsTrain](#2-arailstrain) - Поезд
-3. [ARailsSplinePath](#3-arailssplinepath) - Пути для поездов
-4. [UInteractionComponent](#4-uinteractioncomponent) - Компонент взаимодействия
-5. [AInteractableActor](#5-ainteractableactor) - Интерактивные объекты
-6. [IInteractableInterface](#6-iinteractableinterface) - Интерфейс взаимодействия
-7. [ARailsPlayerController](#7-arailsplayercontroller) - Контроллер игрока
-8. [UTrainCheatManager](#8-utraincheatmanager) - Читы для разработки
-9. [FAimTraceService](#9-faimtraceservice) - Утилиты трейсинга
+1. [ARailsPlayerCharacter](#1-arailsplayercharacter) - Игровой персонаж (C++ базовый класс)
+2. [IControllableCharacterInterface](#2-icontrollablecharacterinterface) - Интерфейс для BP персонажей
+3. [ARailsTrain](#3-arailstrain) - Поезд
+4. [ARailsSplinePath](#4-arailssplinepath) - Пути для поездов
+5. [UInteractionComponent](#5-uinteractioncomponent) - Компонент взаимодействия
+6. [AInteractableActor](#6-ainteractableactor) - Интерактивные объекты
+7. [IInteractableInterface](#7-iinteractableinterface) - Интерфейс взаимодействия
+8. [ARailsPlayerController](#8-arailsplayercontroller) - Контроллер игрока
+9. [UTrainCheatManager](#9-utraincheatmanager) - Читы для разработки
+10. [FAimTraceService](#10-faimtraceservice) - Утилиты трейсинга
+11. [Создание FPS Blueprint Character](#11-создание-fps-blueprint-character) - Руководство
 
 ---
 
@@ -407,7 +409,122 @@ FORCEINLINE bool IsInAir() const
 
 ---
 
-# 2. ARailsTrain
+# 2. IControllableCharacterInterface
+
+**Тип**: Blueprint Interface
+**Путь**: `Source/EpochRails/Character/ControllableCharacterInterface.h`
+**Доступен в BP**: ✅ Да (BlueprintType, BlueprintNativeEvent)
+
+Интерфейс для персонажей, управляемых `ARailsPlayerController`. Реализуйте этот интерфейс в вашем Blueprint Character, чтобы получать input события от контроллера.
+
+## 🎯 Назначение
+
+Контроллер обрабатывает весь input и делегирует его персонажу:
+
+| Input | Метод контроллера | Метод интерфейса |
+|-------|-------------------|------------------|
+| Move (WASD) | HandleMove | - (прямой вызов AddMovementInput) |
+| Look (Mouse) | HandleLook | - (прямой вызов AddYaw/PitchInput) |
+| Jump | HandleJump | - (прямой вызов Jump/StopJumping) |
+| **Sprint** | HandleSprint | **StartSprint / StopSprint** |
+| **Interact** | HandleInteract | **DoInteract** |
+| **Fire** | HandleFire | **StartFire / StopFire** |
+
+## 🔧 Функции (BlueprintNativeEvent)
+
+### HandleMovementInput
+```cpp
+UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Input|Movement")
+void HandleMovementInput(const FVector& WorldDirection, float ScaleValue)
+```
+Опциональный: получить направление движения, уже рассчитанное контроллером.
+
+**Параметры**:
+- `WorldDirection` - Направление в мировых координатах
+- `ScaleValue` - Величина input (0-1)
+
+---
+
+### StartSprint
+```cpp
+UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Input|Movement")
+void StartSprint()
+```
+Вызывается когда нажата кнопка спринта.
+
+**Рекомендуемая реализация в BP**:
+```
+Event StartSprint
+  → Set bIsSprinting = true
+  → CharacterMovement → Set Max Walk Speed = SprintSpeed
+```
+
+---
+
+### StopSprint
+```cpp
+UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Input|Movement")
+void StopSprint()
+```
+Вызывается когда отпущена кнопка спринта.
+
+**Рекомендуемая реализация в BP**:
+```
+Event StopSprint
+  → Set bIsSprinting = false
+  → CharacterMovement → Set Max Walk Speed = WalkSpeed
+```
+
+---
+
+### DoInteract
+```cpp
+UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Input|Interaction")
+void DoInteract()
+```
+Вызывается когда нажата кнопка взаимодействия.
+
+**Рекомендуемая реализация в BP**:
+```
+Event DoInteract
+  → InteractionComponent → Try Interact
+```
+
+---
+
+### StartFire
+```cpp
+UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Input|Combat")
+void StartFire()
+```
+Вызывается когда нажата кнопка стрельбы.
+
+**Рекомендуемая реализация в BP**:
+```
+Event StartFire
+  → Branch: InteractionComponent → Is Hovering Widget?
+    → True: InteractionComponent → Press Widget Interaction
+    → False: Fire Weapon logic
+```
+
+---
+
+### StopFire
+```cpp
+UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Input|Combat")
+void StopFire()
+```
+Вызывается когда отпущена кнопка стрельбы.
+
+**Рекомендуемая реализация в BP**:
+```
+Event StopFire
+  → InteractionComponent → Release Widget Interaction
+```
+
+---
+
+# 3. ARailsTrain
 
 **Тип**: Поезд (наследует APawn)
 **Путь**: `Source/EpochRails/Train/RailsTrain.h`
@@ -1537,3 +1654,230 @@ Static Class
 - ✅ **Иерархия** классов
 
 **Используйте как полный справочник при разработке!** 📚
+
+---
+
+# 11. Создание FPS Blueprint Character
+
+Полное руководство по созданию персонажа от первого лица в Blueprint.
+
+## 🎯 Архитектура
+
+```
+RailsPlayerController (C++)
+    ↓ обрабатывает input
+    ↓ вызывает методы на Pawn
+    ↓
+BP_FirstPersonCharacter (Blueprint)
+    ├─ Реализует IControllableCharacterInterface
+    ├─ Компоненты (добавляются в BP):
+    │   ├─ CameraBoom (SpringArmComponent)
+    │   ├─ FollowCamera (CameraComponent)
+    │   └─ InteractionComponent
+    └─ Логика Sprint/Interact/Fire
+```
+
+## 📋 Шаг 1: Создание Blueprint Character
+
+1. **Content Browser** → Right Click → **Blueprint Class**
+2. Выбрать **Character** как родительский класс
+3. Назвать: `BP_FirstPersonCharacter`
+
+## 📋 Шаг 2: Настройка FPS Movement
+
+В **Class Defaults** (панель Details):
+
+### Character Movement Component:
+| Параметр | Значение | Описание |
+|----------|----------|----------|
+| `Orient Rotation to Movement` | ❌ **false** | Персонаж НЕ поворачивается по движению |
+| `Max Walk Speed` | 500 | Обычная скорость |
+| `Jump Z Velocity` | 500 | Высота прыжка |
+| `Air Control` | 0.35 | Управление в воздухе |
+
+### Character (Self):
+| Параметр | Значение | Описание |
+|----------|----------|----------|
+| `Use Controller Rotation Pitch` | ❌ false | |
+| `Use Controller Rotation Yaw` | ✅ **true** | Персонаж поворачивается с камерой |
+| `Use Controller Rotation Roll` | ❌ false | |
+
+## 📋 Шаг 3: Добавление компонентов
+
+В **Components** панели добавить:
+
+### 1. Spring Arm (CameraBoom)
+```
+Parent: CapsuleComponent (или Mesh socket)
+```
+
+| Параметр | Значение |
+|----------|----------|
+| `Target Arm Length` | 0 (FPS) или 300 (TPS) |
+| `Use Pawn Control Rotation` | ✅ true |
+| `Do Collision Test` | ❌ false (для FPS) |
+| `Socket Offset` | (0, 0, 60) - на уровне глаз |
+
+### 2. Camera (FollowCamera)
+```
+Parent: CameraBoom
+```
+
+| Параметр | Значение |
+|----------|----------|
+| `Use Pawn Control Rotation` | ❌ false |
+
+### 3. Interaction Component
+```
+Parent: Root
+```
+Добавить компонент: **Interaction Component** (из списка)
+
+## 📋 Шаг 4: Реализация интерфейса
+
+1. **Class Settings** → **Interfaces** → **Add**
+2. Найти и добавить: `ControllableCharacterInterface`
+3. **Compile** Blueprint
+
+## 📋 Шаг 5: Реализация событий интерфейса
+
+В **Event Graph** реализовать события:
+
+### Event Start Sprint
+```
+Event Start Sprint
+    │
+    ├─► Set bIsSprinting = true
+    │
+    └─► Get Character Movement
+            │
+            └─► Set Max Walk Speed = 800.0
+```
+
+### Event Stop Sprint
+```
+Event Stop Sprint
+    │
+    ├─► Set bIsSprinting = false
+    │
+    └─► Get Character Movement
+            │
+            └─► Set Max Walk Speed = 500.0
+```
+
+### Event Do Interact
+```
+Event Do Interact
+    │
+    └─► Interaction Component
+            │
+            └─► Try Interact
+```
+
+### Event Start Fire
+```
+Event Start Fire
+    │
+    └─► Branch: Interaction Component → Is Hovering Widget?
+            │
+            ├─► True: Interaction Component → Press Widget Interaction
+            │
+            └─► False: [Your weapon fire logic]
+```
+
+### Event Stop Fire
+```
+Event Stop Fire
+    │
+    └─► Interaction Component → Release Widget Interaction
+```
+
+## 📋 Шаг 6: Переменные для анимации (опционально)
+
+Создать переменные:
+
+| Имя | Тип | Описание |
+|-----|-----|----------|
+| `bIsSprinting` | bool | Для Animation Blueprint |
+| `CurrentSpeed` | float | Скорость для AnimBP |
+| `bIsInAir` | bool | В воздухе ли |
+| `WalkSpeed` | float (default 500) | Скорость ходьбы |
+| `SprintSpeed` | float (default 800) | Скорость спринта |
+
+### Event Tick (для обновления):
+```
+Event Tick
+    │
+    └─► Get Velocity → Vector Length → Set CurrentSpeed
+    │
+    └─► Character Movement → Is Falling → Set bIsInAir
+```
+
+## 📋 Шаг 7: Настройка GameMode
+
+1. Открыть ваш **GameMode Blueprint**
+2. Установить:
+   - **Default Pawn Class**: `BP_FirstPersonCharacter`
+   - **Player Controller Class**: `BP_RailsPlayerController` (ваш BP от ARailsPlayerController)
+
+## ⚠️ Важные замечания
+
+### Move и Look
+Контроллер **сам** обрабатывает Move и Look. В персонаже **не нужно** реализовывать эти события. Контроллер вызывает:
+- `AddMovementInput()` - для движения
+- `AddYawInput()` / `AddPitchInput()` - для камеры
+- `Jump()` / `StopJumping()` - для прыжка
+
+### Input Actions
+Input Actions **не нужно** настраивать в BP персонаже. Они настраиваются в контроллере через Input Mapping Contexts.
+
+### Удаление старых событий
+Если в вашем BP есть старые события из скриншотов (EnhancedInputAction IA_Move, IA_Look, etc.), их можно **удалить** - контроллер теперь обрабатывает это сам.
+
+## 📊 Итоговая структура EventGraph
+
+```
+┌─────────────────────────────────────────────┐
+│              EVENT GRAPH                     │
+├─────────────────────────────────────────────┤
+│                                              │
+│  [Event BeginPlay]                          │
+│       └─► Initial setup                     │
+│                                              │
+│  [Event Tick]                               │
+│       └─► Update animation variables        │
+│                                              │
+│  ═══════ Interface Events ═══════           │
+│                                              │
+│  [Event Start Sprint]                       │
+│       └─► bIsSprinting = true               │
+│       └─► MaxWalkSpeed = SprintSpeed        │
+│                                              │
+│  [Event Stop Sprint]                        │
+│       └─► bIsSprinting = false              │
+│       └─► MaxWalkSpeed = WalkSpeed          │
+│                                              │
+│  [Event Do Interact]                        │
+│       └─► InteractionComponent.TryInteract  │
+│                                              │
+│  [Event Start Fire]                         │
+│       └─► Check UI hover → Fire/Press       │
+│                                              │
+│  [Event Stop Fire]                          │
+│       └─► Release widget interaction        │
+│                                              │
+└─────────────────────────────────────────────┘
+```
+
+## ✅ Чеклист готовности
+
+- [ ] Blueprint создан от Character
+- [ ] `Use Controller Rotation Yaw` = true
+- [ ] `Orient Rotation to Movement` = false
+- [ ] Spring Arm добавлен с `Use Pawn Control Rotation` = true
+- [ ] Camera добавлена к Spring Arm
+- [ ] Interaction Component добавлен
+- [ ] Интерфейс `ControllableCharacterInterface` реализован
+- [ ] События Sprint/Interact/Fire реализованы
+- [ ] GameMode настроен с правильным Pawn Class
+- [ ] Старые input события удалены из EventGraph

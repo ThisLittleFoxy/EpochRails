@@ -9,6 +9,7 @@
 class IInteractableInterface;
 class ARailsPlayerCharacter;
 class UWidgetInteractionComponent;
+class UCameraComponent;
 
 /**
  * Component that handles interaction detection and execution
@@ -160,11 +161,18 @@ private:
   /** Timer for interaction checks */
   float InteractionCheckTimer;
 
-  /** Cached player character reference */
+  /** Cached character reference (works with any ACharacter) */
   UPROPERTY()
-  ARailsPlayerCharacter *OwningCharacter;
+  ACharacter *OwningCharacter;
+
+  /** Cached camera reference */
+  UPROPERTY()
+  UCameraComponent *CachedCamera;
 
   /** Widget interaction component for UI */
   UPROPERTY()
   UWidgetInteractionComponent *WidgetInteraction;
+
+  /** Find camera component on owner */
+  UCameraComponent *FindCameraComponent();
 };
