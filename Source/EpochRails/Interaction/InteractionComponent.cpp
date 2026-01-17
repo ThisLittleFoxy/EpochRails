@@ -2,7 +2,6 @@
 
 #include "InteractionComponent.h"
 #include "Camera/CameraComponent.h"
-#include "Character/RailsPlayerCharacter.h"
 #include "Components/WidgetInteractionComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
@@ -66,13 +65,7 @@ UCameraComponent *UInteractionComponent::FindCameraComponent() {
     return nullptr;
   }
 
-  // First, try to get camera from RailsPlayerCharacter if it is one
-  if (ARailsPlayerCharacter *RailsCharacter =
-          Cast<ARailsPlayerCharacter>(OwningCharacter)) {
-    return RailsCharacter->GetFollowCamera();
-  }
-
-  // Otherwise, find any CameraComponent on the character
+  // Find any CameraComponent on the character
   return OwningCharacter->FindComponentByClass<UCameraComponent>();
 }
 
@@ -100,10 +93,6 @@ void UInteractionComponent::TickComponent(
     return;
   }
 
-  // Get RailsPlayerCharacter for interface calls (may be nullptr for BP characters)
-  ARailsPlayerCharacter *RailsCharacter =
-      Cast<ARailsPlayerCharacter>(OwningCharacter);
-
   // Perform interaction trace for regular objects
   FHitResult HitResult;
   if (PerformInteractionTrace(HitResult)) {
@@ -113,7 +102,7 @@ void UInteractionComponent::TickComponent(
       IInteractableInterface *Interactable =
           Cast<IInteractableInterface>(HitActor);
       if (Interactable &&
-          Interactable->Execute_CanInteract(HitActor, RailsCharacter)) {
+          Interactable->Execute_CanInteract(HitActor, OwningCharacter)) {
         // New valid interactable found
         if (HitActor != FocusedActor.Get()) {
           UpdateFocusedActor(HitActor);
@@ -172,17 +161,13 @@ bool UInteractionComponent::PerformInteractionTrace(FHitResult &OutHitResult) {
 }
 
 void UInteractionComponent::UpdateFocusedActor(AActor *NewFocusActor) {
-  // Get RailsPlayerCharacter for interface calls (may be nullptr for BP characters)
-  ARailsPlayerCharacter *RailsCharacter =
-      Cast<ARailsPlayerCharacter>(OwningCharacter);
-
   // Handle focus end on previous actor
   if (FocusedActor.IsValid() && FocusedActor.Get() != NewFocusActor) {
     IInteractableInterface *OldInteractable =
         Cast<IInteractableInterface>(FocusedActor.Get());
     if (OldInteractable) {
       OldInteractable->Execute_OnInteractionFocusEnd(FocusedActor.Get(),
-                                                     RailsCharacter);
+                                                     OwningCharacter);
     }
   }
 
@@ -195,7 +180,7 @@ void UInteractionComponent::UpdateFocusedActor(AActor *NewFocusActor) {
         Cast<IInteractableInterface>(FocusedActor.Get());
     if (NewInteractable) {
       NewInteractable->Execute_OnInteractionFocusBegin(FocusedActor.Get(),
-                                                       RailsCharacter);
+                                                       OwningCharacter);
     }
   }
 }
@@ -214,17 +199,13 @@ bool UInteractionComponent::TryInteract() {
     return false;
   }
 
-  // Get RailsPlayerCharacter for interface calls (may be nullptr for BP characters)
-  ARailsPlayerCharacter *RailsCharacter =
-      Cast<ARailsPlayerCharacter>(OwningCharacter);
-
   // Check if we can interact
-  if (!Interactable->Execute_CanInteract(FocusedActor.Get(), RailsCharacter)) {
+  if (!Interactable->Execute_CanInteract(FocusedActor.Get(), OwningCharacter)) {
     return false;
   }
 
   // Execute interaction
-  return Interactable->Execute_OnInteract(FocusedActor.Get(), RailsCharacter);
+  return Interactable->Execute_OnInteract(FocusedActor.Get(), OwningCharacter);
 }
 
 
@@ -289,9 +270,5 @@ bool UInteractionComponent::CanInteractWithFocusedActor() const {
     return false;
   }
 
-  // Get RailsPlayerCharacter for interface calls (may be nullptr for BP characters)
-  ARailsPlayerCharacter *RailsCharacter =
-      Cast<ARailsPlayerCharacter>(OwningCharacter);
-
-  return Interactable->Execute_CanInteract(FocusedActor.Get(), RailsCharacter);
+  return Interactable->Execute_CanInteract(FocusedActor.Get(), OwningCharacter);
 }

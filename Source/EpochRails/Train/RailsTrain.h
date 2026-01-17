@@ -12,7 +12,7 @@ class UBoxComponent;
 class UInputMappingContext;
 class UEnhancedInputLocalPlayerSubsystem;
 class ARailsSplinePath;
-class ARailsPlayerCharacter;
+class ACharacter;
 class ARailsWagon;
 
 UCLASS(Blueprintable)
@@ -43,13 +43,13 @@ public:
 
   // ===== Passenger management =====
   UFUNCTION(BlueprintCallable, Category = "Train|Passengers")
-  bool IsPassengerInside(ARailsPlayerCharacter *Character) const;
+  bool IsPassengerInside(ACharacter *Character) const;
 
   UFUNCTION(BlueprintCallable, Category = "Train|Passengers")
-  void OnPlayerEnterTrain(ARailsPlayerCharacter *Character);
+  void OnPlayerEnterTrain(ACharacter *Character);
 
   UFUNCTION(BlueprintCallable, Category = "Train|Passengers")
-  void OnPlayerExitTrain(ARailsPlayerCharacter *Character);
+  void OnPlayerExitTrain(ACharacter *Character);
 
   // ===== Wagon API =====
 
@@ -142,8 +142,8 @@ protected:
   USplineComponent *GetActiveSpline() const;
 
   // ===== Passenger helpers =====
-  void SwitchInputMappingContext(ARailsPlayerCharacter *Character, bool bInsideTrain);
-  UEnhancedInputLocalPlayerSubsystem *GetInputSubsystem(ARailsPlayerCharacter *Character) const;
+  void SwitchInputMappingContext(ACharacter *Character, bool bInsideTrain);
+  UEnhancedInputLocalPlayerSubsystem *GetInputSubsystem(ACharacter *Character) const;
 
   UFUNCTION()
   void OnInteriorBeginOverlap(UPrimitiveComponent *OverlappedComponent,
@@ -159,5 +159,5 @@ protected:
                             int32 OtherBodyIndex);
 
 private:
-  TArray<TWeakObjectPtr<ARailsPlayerCharacter>> PassengersInside;
+  TArray<TWeakObjectPtr<ACharacter>> PassengersInside;
 };

@@ -9,9 +9,9 @@
 #include "Engine/LocalPlayer.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/FloatingPawnMovement.h"
+#include "GameFramework/Character.h"
 #include "Kismet/KismetMathLibrary.h"
 
-#include "Character/RailsPlayerCharacter.h"
 #include "RailsSplinePath.h"
 #include "RailsWagon.h"
 
@@ -130,12 +130,12 @@ void ARailsTrain::UpdatePath() {
 
 // ===== Passenger management =====
 
-bool ARailsTrain::IsPassengerInside(ARailsPlayerCharacter *Character) const {
+bool ARailsTrain::IsPassengerInside(ACharacter *Character) const {
   if (!Character) {
     return false;
   }
 
-  for (const TWeakObjectPtr<ARailsPlayerCharacter> &WeakPassenger : PassengersInside) {
+  for (const TWeakObjectPtr<ACharacter> &WeakPassenger : PassengersInside) {
     if (WeakPassenger.IsValid() && WeakPassenger.Get() == Character) {
       return true;
     }
@@ -143,7 +143,7 @@ bool ARailsTrain::IsPassengerInside(ARailsPlayerCharacter *Character) const {
   return false;
 }
 
-void ARailsTrain::OnPlayerEnterTrain(ARailsPlayerCharacter *Character) {
+void ARailsTrain::OnPlayerEnterTrain(ACharacter *Character) {
   if (!Character || IsPassengerInside(Character)) {
     return;
   }
@@ -154,13 +154,13 @@ void ARailsTrain::OnPlayerEnterTrain(ARailsPlayerCharacter *Character) {
   UE_LOG(LogTemp, Log, TEXT("Player %s entered train"), *Character->GetName());
 }
 
-void ARailsTrain::OnPlayerExitTrain(ARailsPlayerCharacter *Character) {
+void ARailsTrain::OnPlayerExitTrain(ACharacter *Character) {
   if (!Character || !IsPassengerInside(Character)) {
     return;
   }
 
   PassengersInside.RemoveAll(
-      [Character](const TWeakObjectPtr<ARailsPlayerCharacter> &WeakPassenger) {
+      [Character](const TWeakObjectPtr<ACharacter> &WeakPassenger) {
         return WeakPassenger.IsValid() && WeakPassenger.Get() == Character;
       });
 
@@ -169,7 +169,7 @@ void ARailsTrain::OnPlayerExitTrain(ARailsPlayerCharacter *Character) {
   UE_LOG(LogTemp, Log, TEXT("Player %s exited train"), *Character->GetName());
 }
 
-void ARailsTrain::SwitchInputMappingContext(ARailsPlayerCharacter *Character, bool bInsideTrain) {
+void ARailsTrain::SwitchInputMappingContext(ACharacter *Character, bool bInsideTrain) {
   if (!Character) {
     return;
   }
@@ -197,7 +197,7 @@ void ARailsTrain::SwitchInputMappingContext(ARailsPlayerCharacter *Character, bo
 }
 
 UEnhancedInputLocalPlayerSubsystem *ARailsTrain::GetInputSubsystem(
-    ARailsPlayerCharacter *Character) const {
+    ACharacter *Character) const {
   if (!Character) {
     return nullptr;
   }
@@ -220,7 +220,7 @@ void ARailsTrain::OnInteriorBeginOverlap(UPrimitiveComponent *OverlappedComponen
                                          UPrimitiveComponent *OtherComp,
                                          int32 OtherBodyIndex, bool bFromSweep,
                                          const FHitResult &SweepResult) {
-  if (ARailsPlayerCharacter *Player = Cast<ARailsPlayerCharacter>(OtherActor)) {
+  if (ACharacter *Player = Cast<ACharacter>(OtherActor)) {
     OnPlayerEnterTrain(Player);
   }
 }
@@ -229,7 +229,7 @@ void ARailsTrain::OnInteriorEndOverlap(UPrimitiveComponent *OverlappedComponent,
                                        AActor *OtherActor,
                                        UPrimitiveComponent *OtherComp,
                                        int32 OtherBodyIndex) {
-  if (ARailsPlayerCharacter *Player = Cast<ARailsPlayerCharacter>(OtherActor)) {
+  if (ACharacter *Player = Cast<ACharacter>(OtherActor)) {
     OnPlayerExitTrain(Player);
   }
 }
