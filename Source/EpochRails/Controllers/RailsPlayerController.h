@@ -8,6 +8,8 @@
 
 class UInputMappingContext;
 class UUserWidget;
+class ATrainActor;
+class UBuildingComponent;
 struct FInputActionValue;
 
 /**
@@ -110,8 +112,66 @@ protected:
   UFUNCTION()
   void HandleFireCompleted(const FInputActionValue &Value);
 
+  // ========== Train Control Handlers ==========
+
+  /** Train throttle input (0-1 axis) */
+  UFUNCTION()
+  void HandleTrainThrottle(const FInputActionValue &Value);
+
+  /** Train brake input (0-1 axis) */
+  UFUNCTION()
+  void HandleTrainBrake(const FInputActionValue &Value);
+
+  /** Toggle train reverse */
+  UFUNCTION()
+  void HandleTrainReverse(const FInputActionValue &Value);
+
+  /** Emergency brake */
+  UFUNCTION()
+  void HandleTrainEmergencyBrake(const FInputActionValue &Value);
+
+  // ========== Building Handlers ==========
+
+  /** Toggle build mode */
+  UFUNCTION()
+  void HandleToggleBuildMode(const FInputActionValue &Value);
+
+  /** Place structure in build mode */
+  UFUNCTION()
+  void HandleBuildPlace(const FInputActionValue &Value);
+
+  /** Rotate structure preview */
+  UFUNCTION()
+  void HandleBuildRotate(const FInputActionValue &Value);
+
+  /** Toggle grid snap mode */
+  UFUNCTION()
+  void HandleBuildToggleSnap(const FInputActionValue &Value);
+
+  /** Cancel build mode */
+  UFUNCTION()
+  void HandleBuildCancel(const FInputActionValue &Value);
+
+  // ========== Train State ==========
+
+  /** Currently controlled train (set when operating console) */
+  UPROPERTY()
+  TObjectPtr<ATrainActor> ControlledTrain;
+
 public:
   /** Show/hide mouse cursor and set appropriate input mode */
   UFUNCTION(BlueprintCallable, Category = "UI")
   void SetMouseCursorVisible(bool bVisible);
+
+  /** Set the train being controlled (called by TrainConsole) */
+  UFUNCTION(BlueprintCallable, Category = "Train")
+  void SetControlledTrain(ATrainActor* Train);
+
+  /** Get the currently controlled train */
+  UFUNCTION(BlueprintCallable, Category = "Train")
+  ATrainActor* GetControlledTrain() const { return ControlledTrain; }
+
+  /** Get building component from controlled pawn */
+  UFUNCTION(BlueprintCallable, Category = "Building")
+  UBuildingComponent* GetBuildingComponent() const;
 };

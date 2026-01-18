@@ -27,5 +27,5 @@ public:
 
 private:
   /** Find nearest train to player */
-  class ARailsTrain *FindNearestTrain() const;
+  class ATrainActor *FindNearestTrain() const;
 };
