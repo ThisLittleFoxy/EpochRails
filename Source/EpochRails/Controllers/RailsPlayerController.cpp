@@ -13,6 +13,7 @@
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "Train/TrainActor.h"
+#include "Train/RailTrainMovementComponent.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
 // FIXED CONSTRUCTOR
