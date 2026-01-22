@@ -2,6 +2,7 @@
 
 #include "RailsPlayerController.h"
 #include "Blueprint/UserWidget.h"
+#include "Building/BuildingComponent.h"
 #include "Character/ControllableCharacterInterface.h"
 #include "Engine/LocalPlayer.h"
 #include "EnhancedInputComponent.h"
@@ -11,6 +12,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
+#include "Train/TrainActor.h"
+#include "Train/RailTrainMovementComponent.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
 // FIXED CONSTRUCTOR
@@ -219,6 +222,82 @@ void ARailsPlayerController::BindInputActions() {
         UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleFire"),
                *ActionName);
         BoundActions.Add(Action);
+      }
+      // ========== Train Control ==========
+      else if (ActionName.Contains(TEXT("TrainThrottle")) ||
+               ActionName.Contains(TEXT("IA_TrainThrottle"))) {
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Triggered, this,
+            &ARailsPlayerController::HandleTrainThrottle);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleTrainThrottle"),
+               *ActionName);
+        BoundActions.Add(Action);
+      } else if (ActionName.Contains(TEXT("TrainBrake")) ||
+                 ActionName.Contains(TEXT("IA_TrainBrake"))) {
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Triggered, this,
+            &ARailsPlayerController::HandleTrainBrake);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleTrainBrake"),
+               *ActionName);
+        BoundActions.Add(Action);
+      } else if (ActionName.Contains(TEXT("TrainReverse")) ||
+                 ActionName.Contains(TEXT("IA_TrainReverse"))) {
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Started, this,
+            &ARailsPlayerController::HandleTrainReverse);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleTrainReverse"),
+               *ActionName);
+        BoundActions.Add(Action);
+      } else if (ActionName.Contains(TEXT("TrainEmergency")) ||
+                 ActionName.Contains(TEXT("IA_TrainEmergencyBrake"))) {
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Started, this,
+            &ARailsPlayerController::HandleTrainEmergencyBrake);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleTrainEmergencyBrake"),
+               *ActionName);
+        BoundActions.Add(Action);
+      }
+      // ========== Building ==========
+      else if (ActionName.Contains(TEXT("ToggleBuildMode")) ||
+               ActionName.Contains(TEXT("IA_ToggleBuildMode"))) {
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Started, this,
+            &ARailsPlayerController::HandleToggleBuildMode);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleToggleBuildMode"),
+               *ActionName);
+        BoundActions.Add(Action);
+      } else if (ActionName.Contains(TEXT("BuildPlace")) ||
+                 ActionName.Contains(TEXT("IA_BuildPlace"))) {
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Started, this,
+            &ARailsPlayerController::HandleBuildPlace);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleBuildPlace"),
+               *ActionName);
+        BoundActions.Add(Action);
+      } else if (ActionName.Contains(TEXT("BuildRotate")) ||
+                 ActionName.Contains(TEXT("IA_BuildRotate"))) {
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Triggered, this,
+            &ARailsPlayerController::HandleBuildRotate);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleBuildRotate"),
+               *ActionName);
+        BoundActions.Add(Action);
+      } else if (ActionName.Contains(TEXT("BuildToggleSnap")) ||
+                 ActionName.Contains(TEXT("IA_BuildToggleSnap"))) {
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Started, this,
+            &ARailsPlayerController::HandleBuildToggleSnap);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleBuildToggleSnap"),
+               *ActionName);
+        BoundActions.Add(Action);
+      } else if (ActionName.Contains(TEXT("BuildCancel")) ||
+                 ActionName.Contains(TEXT("IA_BuildCancel"))) {
+        EnhancedInputComponent->BindAction(
+            Action, ETriggerEvent::Started, this,
+            &ARailsPlayerController::HandleBuildCancel);
+        UE_LOG(LogEpochRails, Log, TEXT("Bound action '%s' to HandleBuildCancel"),
+               *ActionName);
+        BoundActions.Add(Action);
       } else {
         UE_LOG(LogEpochRails, Warning, TEXT("No handler found for action: %s"),
                *ActionName);
@@ -404,4 +483,117 @@ void ARailsPlayerController::SetMouseCursorVisible(bool bVisible) {
 
     UE_LOG(LogEpochRails, Log, TEXT("Mouse cursor disabled, game mode active"));
   }
+}
+
+// ========== Train Control Handlers ==========
+
+void ARailsPlayerController::HandleTrainThrottle(const FInputActionValue &Value) {
+  if (!ControlledTrain) {
+    return;
+  }
+
+  float ThrottleValue = Value.Get<float>();
+  ControlledTrain->SetThrottle(ThrottleValue);
+}
+
+void ARailsPlayerController::HandleTrainBrake(const FInputActionValue &Value) {
+  if (!ControlledTrain) {
+    return;
+  }
+
+  float BrakeValue = Value.Get<float>();
+  ControlledTrain->SetBrake(BrakeValue);
+}
+
+void ARailsPlayerController::HandleTrainReverse(const FInputActionValue &Value) {
+  if (!ControlledTrain) {
+    return;
+  }
+
+  ControlledTrain->ToggleReverse();
+  UE_LOG(LogEpochRails, Log, TEXT("Train reverse toggled"));
+}
+
+void ARailsPlayerController::HandleTrainEmergencyBrake(const FInputActionValue &Value) {
+  if (!ControlledTrain) {
+    return;
+  }
+
+  // Toggle emergency brake
+  if (ControlledTrain->MovementComponent &&
+      ControlledTrain->MovementComponent->IsEmergencyBrakeActive()) {
+    ControlledTrain->ReleaseEmergencyBrake();
+    UE_LOG(LogEpochRails, Log, TEXT("Emergency brake released"));
+  } else {
+    ControlledTrain->EmergencyBrake();
+    UE_LOG(LogEpochRails, Log, TEXT("Emergency brake activated"));
+  }
+}
+
+void ARailsPlayerController::SetControlledTrain(ATrainActor* Train) {
+  ControlledTrain = Train;
+  UE_LOG(LogEpochRails, Log, TEXT("Controlled train set to: %s"),
+         Train ? *Train->GetName() : TEXT("None"));
+}
+
+// ========== Building Handlers ==========
+
+UBuildingComponent* ARailsPlayerController::GetBuildingComponent() const {
+  APawn* ControlledPawn = GetPawn();
+  if (!ControlledPawn) {
+    return nullptr;
+  }
+
+  return ControlledPawn->FindComponentByClass<UBuildingComponent>();
+}
+
+void ARailsPlayerController::HandleToggleBuildMode(const FInputActionValue &Value) {
+  UBuildingComponent* BuildComp = GetBuildingComponent();
+  if (!BuildComp) {
+    UE_LOG(LogEpochRails, Warning, TEXT("No BuildingComponent found on pawn"));
+    return;
+  }
+
+  BuildComp->ToggleBuildMode();
+}
+
+void ARailsPlayerController::HandleBuildPlace(const FInputActionValue &Value) {
+  UBuildingComponent* BuildComp = GetBuildingComponent();
+  if (!BuildComp || !BuildComp->IsInBuildMode()) {
+    return;
+  }
+
+  if (BuildComp->ConfirmPlacement()) {
+    UE_LOG(LogEpochRails, Log, TEXT("Structure placed successfully"));
+  }
+}
+
+void ARailsPlayerController::HandleBuildRotate(const FInputActionValue &Value) {
+  UBuildingComponent* BuildComp = GetBuildingComponent();
+  if (!BuildComp || !BuildComp->IsInBuildMode()) {
+    return;
+  }
+
+  float RotateValue = Value.Get<float>();
+  BuildComp->RotatePreview(RotateValue * 15.0f); // 15 degrees per input tick
+}
+
+void ARailsPlayerController::HandleBuildToggleSnap(const FInputActionValue &Value) {
+  UBuildingComponent* BuildComp = GetBuildingComponent();
+  if (!BuildComp || !BuildComp->IsInBuildMode()) {
+    return;
+  }
+
+  BuildComp->TogglePlacementMode();
+  UE_LOG(LogEpochRails, Log, TEXT("Build snap mode toggled"));
+}
+
+void ARailsPlayerController::HandleBuildCancel(const FInputActionValue &Value) {
+  UBuildingComponent* BuildComp = GetBuildingComponent();
+  if (!BuildComp) {
+    return;
+  }
+
+  BuildComp->CancelPlacement();
+  UE_LOG(LogEpochRails, Log, TEXT("Build mode cancelled"));
 }
